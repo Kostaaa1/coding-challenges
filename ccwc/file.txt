@@ -1,7 +1,0 @@
-I personally approached deep learning using TensorFlow, which I immediately found very easy and intuitive. Many books also use this framework as a reference, such as Hands-On Machine Learning with Scikit-Learn, Keras, and Tensorflow.
-I then noticed that PyTorch is often used in research in both academia and industry. So I started to implement simple projects that I had already developed in TensorFlow using PyTorch, in order to have a basic understanding of both. Since I believe that the best way to learn is to explain to others, I decided to write this hands-on tutorial to develop a convolutional neural network for binary image classification in PyTorch.
-
-Dataset
-We will use the dogs vs cats dataset (which has a free license ) that you can find at the following link: https://www.kaggle.com/datasets/biaiscience/dogs-vs-cats. The datasets is open to free use. I will show you how to create a model to solve this binary classification task and how to use it for inference on new images.
-
-The first thing to do in order to download this dataset is to access Kaggle with your credentials and then download the kaggle.json file that you can get by clicking on the Create New API Token button.
