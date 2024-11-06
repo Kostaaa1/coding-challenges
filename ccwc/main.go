@@ -31,14 +31,17 @@ type config struct {
 func getNBytes(content string) int {
 	return len([]byte(content))
 }
+
 func getNLines(content string) int {
 	lines := strings.Split(content, "\n")
 	return len(lines) - 1
 }
+
 func getNWords(content string) int {
 	words := strings.Fields(content)
 	return len(words)
 }
+
 func getNChar(content string) int {
 	c := utf8.RuneCountInString(content)
 	return c
@@ -51,24 +54,25 @@ func (cfg *config) GetCounts(content string) []int {
 			counts = append(counts, countF(content))
 		}
 	}
-	switch {
-	case cfg.m:
+
+	if cfg.m {
 		if checkLocaleSupportsUTF8() {
 			addCount(true, getNChar)
 		} else {
 			addCount(true, getNBytes)
 		}
-	default:
-		if !cfg.c && !cfg.l && !cfg.w {
-			addCount(true, getNLines)
-			addCount(true, getNWords)
-			addCount(true, getNBytes)
-		} else {
-			addCount(cfg.c, getNBytes)
-			addCount(cfg.l, getNLines)
-			addCount(cfg.w, getNWords)
-		}
 	}
+
+	if !cfg.c && !cfg.l && !cfg.w {
+		addCount(true, getNLines)
+		addCount(true, getNWords)
+		addCount(true, getNBytes)
+	} else {
+		addCount(cfg.c, getNBytes)
+		addCount(cfg.l, getNLines)
+		addCount(cfg.w, getNWords)
+	}
+
 	for i, count := range counts {
 		if i >= len(cfg.total) {
 			cfg.total = append(cfg.total, count)
@@ -76,6 +80,7 @@ func (cfg *config) GetCounts(content string) []int {
 			cfg.total[i] += count
 		}
 	}
+
 	return counts
 }
 
@@ -83,6 +88,7 @@ func (cfg *config) printLines(lines []line) {
 	if len(lines) == 0 {
 		log.Fatal("Unexpected error. 0 Lines")
 	}
+
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
 		if line.err != nil {
@@ -109,16 +115,17 @@ func main() {
 		m:     false,
 		total: []int{},
 	}
+
 	flag.BoolVar(&cfg.c, "c", false, "print the byte counts")
 	flag.BoolVar(&cfg.m, "m", false, "print the character counts")
 	flag.BoolVar(&cfg.l, "l", false, "print the newline counts")
 	flag.BoolVar(&cfg.w, "w", false, "print the word counts")
 	flag.Parse()
 
-	dstPaths := extractPathsFromArgs()
-	var lines = make([]line, len(dstPaths))
+	paths := extractPathsFromArgs()
+	var lines = make([]line, len(paths))
 
-	if len(dstPaths) == 0 {
+	if len(paths) == 0 {
 		content := readStdin()
 		counts := cfg.GetCounts(content)
 		var line = line{
@@ -128,7 +135,7 @@ func main() {
 		}
 		lines = append(lines, line)
 	} else {
-		for i, p := range dstPaths {
+		for i, p := range paths {
 			var line = line{
 				counts:  []int{},
 				dstPath: p,
@@ -145,7 +152,16 @@ func main() {
 			lines[i] = line
 		}
 	}
+
 	cfg.printLines(lines)
+}
+
+func extractPathsFromArgs() []string {
+	var paths []string
+	for _, arg := range flag.Args() {
+		paths = append(paths, arg)
+	}
+	return paths
 }
 
 func getLocale() (string, error) {
@@ -163,6 +179,7 @@ func checkLocaleSupportsUTF8() bool {
 		fmt.Println("error getting locale")
 		return false
 	}
+
 	lines := strings.Split(locale, "\n")
 	for _, line := range lines {
 		if strings.HasPrefix(line, "LC_CTYPE=") {
@@ -171,6 +188,7 @@ func checkLocaleSupportsUTF8() bool {
 			return strings.HasSuffix(value, "UTF-8")
 		}
 	}
+
 	return false
 }
 
@@ -180,20 +198,13 @@ func openAndRead(dst string) ([]byte, error) {
 		return nil, fmt.Errorf("ccwc: '%s': No such file or directory", dst)
 	}
 	defer f.Close()
+
 	b, err := io.ReadAll(f)
 	if err != nil {
 		return nil, err
 	}
-	return b, nil
-}
 
-func extractPathsFromArgs() []string {
-	var paths []string
-	for i := 1; i < len(os.Args); i++ {
-		arg := os.Args[i]
-		paths = append(paths, arg)
-	}
-	return paths
+	return b, nil
 }
 
 func readStdin() string {
