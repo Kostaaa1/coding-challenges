@@ -39,7 +39,7 @@ func (cfg *config) print(dst string, re *regexp.Regexp, includePath bool, wg *sy
 		return
 	}
 
-	// THIS WILL WORK ONLY ON UNIX SYSTEMS! checking if the file is an executable (we want to use grep only on human-readble files). info.Mode() returns this: rwxrwxrwx. First 3 bits are for the owner, next 3 for the group, and last 3 are for other. ****
+	// THIS WILL WORK ONLY ON UNIX SYSTEMS! checking if the file is an executable (we want to use grep only on human-readble files). info.Mode() returns this: rwxrwxrwx. First 3 bits are for the owner, next 3 for the group, and last 3 are for other. *****
 	mode := info.Mode()
 	if mode&0100 != 0 {
 		return
