@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -11,64 +12,99 @@ import (
 	"time"
 )
 
-type Config struct {
-	Addr string
+type config struct {
+	port        int
+	serverCount int
+	pingPeriod  int
 }
 
-type Proxy struct {
-	Addr string
+type proxy struct {
+	addr     string
+	isAlive  bool
+	isActive bool
 }
 
-func (s *Server) Next() {
-	if s.ProxyActive == nil {
-		s.ProxyActive = &s.ProxyMap[0]
-		return
+func getActiveProxy(proxies []*proxy) *proxy {
+	for _, p := range proxies {
+		if p.isActive {
+			return p
+		}
 	}
+	return nil
+}
 
+type server struct {
+	config
+	ln      net.Listener
+	proxies []*proxy
+	ticker  *time.Ticker
+	client  *http.Client
+}
+
+func (s *server) Next() {
 	var id int
-	for i := range s.ProxyMap {
-		if s.ProxyMap[i].Addr == s.ProxyActive.Addr {
+	for i := range s.proxies {
+		if s.proxies[i].isActive && s.proxies[i].isAlive {
 			id = i
 			break
 		}
 	}
-
-	id = (id + 1) % len(s.ProxyMap)
-	s.ProxyActive = &s.ProxyMap[id]
+	s.proxies[id].isActive = false
+	id = (id + 1) % len(s.proxies)
+	s.proxies[id].isActive = true
 }
 
-type Server struct {
-	Config
-	ln          net.Listener
-	ProxyMap    []Proxy
-	ProxyActive *Proxy
-}
-
-func NewServer(cfg Config) *Server {
-	if cfg.Addr == "" {
-		cfg.Addr = ":8000"
+func NewServer(cfg config) *server {
+	servers := make([]*proxy, cfg.serverCount)
+	for i := range servers {
+		servers[i] = &proxy{addr: fmt.Sprintf("http://localhost:800%d", i)}
 	}
-	return &Server{
-		Config: cfg,
-		ProxyMap: []Proxy{
-			{Addr: "http://localhost:8001"},
-			{Addr: "http://localhost:8002"},
-			{Addr: "http://localhost:8003"},
-		},
+
+	duration := time.Duration(cfg.pingPeriod) * time.Second
+	return &server{
+		config:  cfg,
+		proxies: servers,
+		ticker:  time.NewTicker(duration),
+		client:  &http.Client{Timeout: 5 * time.Second},
 	}
 }
 
-func (s *Server) Start() error {
-	ln, err := net.Listen("tcp", s.Addr)
+func (s *server) Start() error {
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil {
 		return err
 	}
+
+	go s.healthChecker()
+
 	s.ln = ln
-	slog.Info("server started on port", "address", s.Config.Addr)
+	slog.Info("server started on port", "Portess", s.config.port)
 	return s.acceptLoop()
 }
 
-func (s *Server) acceptLoop() error {
+func (s *server) healthChecker() {
+	for {
+		select {
+		case <-s.ticker.C:
+			fmt.Println("tick")
+
+			for i := range s.proxies {
+				p := s.proxies[i]
+				resp, err := s.client.Get(fmt.Sprintf("%s/healthcheck", p.addr))
+				if err != nil {
+					slog.Error("failed to get the response from healtchecker", "err", err)
+					continue
+				}
+
+				if resp.StatusCode != http.StatusOK {
+					p.isAlive = false
+				}
+			}
+		}
+	}
+}
+
+func (s *server) acceptLoop() error {
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
@@ -79,7 +115,7 @@ func (s *Server) acceptLoop() error {
 	}
 }
 
-func (s *Server) handleConn(conn net.Conn) {
+func (s *server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
 	buffer := make([]byte, 4096)
@@ -98,15 +134,15 @@ func (s *Server) handleConn(conn net.Conn) {
 
 	s.Next()
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	proxy := getActiveProxy(s.proxies)
 
-	req, err := http.NewRequest("GET", s.ProxyActive.Addr, bytes.NewReader(data))
+	req, err := http.NewRequest("GET", proxy.addr, bytes.NewReader(data))
 	if err != nil {
 		log.Println("Failed to create request:", err)
 		return
 	}
 
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		log.Println("Failed to forward request:", err)
 		return
@@ -132,7 +168,13 @@ func (s *Server) handleConn(conn net.Conn) {
 }
 
 func main() {
-	cfg := Config{}
+	var cfg config
+
+	flag.IntVar(&cfg.port, "port", 8000, "")
+	flag.IntVar(&cfg.pingPeriod, "ping-period", 6, "")
+	flag.IntVar(&cfg.serverCount, "server-count", 4, "")
+	flag.Parse()
+
 	s := NewServer(cfg)
 	if err := s.Start(); err != nil {
 		log.Fatalf("error starting server: %v", err)
