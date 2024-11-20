@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"log"
@@ -10,22 +11,10 @@ import (
 	"time"
 )
 
-// func Healthcheck(w http.ResponseWriter, r *http.Request) {
-// 	if r.Method == http.MethodGet {
-// 		fmt.Println(r.Method)
-// 		b, err := json.Marshal(map[string]string{
-// 			"status":  "available",
-// 			"message": "kobas",
-// 		})
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			w.Write([]byte("error while marshaling"))
-// 		}
-// 		w.WriteHeader(http.StatusOK)
-// 		w.Header().Set("Content-Type", "application/json")
-// 		w.Write(b)
-// 	}
-// }
+type Server struct {
+	Port   string
+	Server *http.Server
+}
 
 func Healthcheck(w http.ResponseWriter, r *http.Request, addr string) {
 	log.Printf("Received request %s %s %s", r.Method, r.URL.Path, addr)
@@ -34,20 +23,16 @@ func Healthcheck(w http.ResponseWriter, r *http.Request, addr string) {
 	w.Write([]byte("Hello from backend server."))
 }
 
-type PageData struct {
-	Addr string
-}
-
 func Index(w http.ResponseWriter, r *http.Request, addr string) {
-	fmt.Println("Request on port: ", addr)
-
 	tmpl, err := template.ParseFiles("index.html")
 	if err != nil {
 		http.Error(w, "unable to load template", http.StatusInternalServerError)
 		return
 	}
 
-	data := PageData{
+	data := struct {
+		Addr string
+	}{
 		Addr: addr,
 	}
 
@@ -59,10 +44,40 @@ func Index(w http.ResponseWriter, r *http.Request, addr string) {
 	}
 }
 
+func NewServer(addr string) *Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthcheck", func(w http.ResponseWriter, r *http.Request) {
+		Healthcheck(w, r, addr)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		Index(w, r, addr)
+	})
+	return &Server{
+		Port: addr,
+		Server: &http.Server{
+			Addr:         addr,
+			Handler:      mux,
+			IdleTimeout:  time.Minute,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 10 * time.Second,
+		},
+	}
+}
+
+func (s *Server) Start(wg *sync.WaitGroup) {
+	defer wg.Done()
+	slog.Info(fmt.Sprintf("server started on port %s", s.Server.Addr))
+	log.Fatal(s.Server.ListenAndServe())
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	slog.Info("Shutting down server on %s", "port", s.Port)
+	return s.Server.Shutdown(ctx)
+}
+
 func main() {
 	addrs := []string{
 		":8001",
-		":8002",
 		":8003",
 	}
 
@@ -71,27 +86,10 @@ func main() {
 	for _, addr := range addrs {
 		wg.Add(1)
 		go func(addr string) {
-			defer wg.Done()
-
-			mux := http.NewServeMux()
-			mux.HandleFunc("/healthcheck", func(w http.ResponseWriter, r *http.Request) {
-				Healthcheck(w, r, addr)
-			})
-			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				Index(w, r, addr)
-			})
-
-			srv := http.Server{
-				Addr:         addr,
-				Handler:      mux,
-				IdleTimeout:  time.Minute,
-				ReadTimeout:  5 * time.Second,
-				WriteTimeout: 10 * time.Second,
-			}
-
-			slog.Info(fmt.Sprintf("server started on port %s", srv.Addr))
-			log.Fatal(srv.ListenAndServe())
+			server := NewServer(addr)
+			server.Start(&wg)
 		}(addr)
 	}
+
 	wg.Wait()
 }

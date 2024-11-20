@@ -9,13 +9,15 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
 type config struct {
-	port        int
-	serverCount int
-	pingPeriod  int
+	port       int
+	pingPeriod int
 }
 
 type proxy struct {
@@ -24,16 +26,7 @@ type proxy struct {
 	isActive bool
 }
 
-func getActiveProxy(proxies []*proxy) *proxy {
-	for _, p := range proxies {
-		if p.isActive {
-			return p
-		}
-	}
-	return nil
-}
-
-type server struct {
+type LBServer struct {
 	config
 	ln      net.Listener
 	proxies []*proxy
@@ -41,97 +34,82 @@ type server struct {
 	client  *http.Client
 }
 
-func (s *server) Next() {
-	var id int
-	for i := range s.proxies {
-		if s.proxies[i].isActive && s.proxies[i].isAlive {
-			id = i
-			break
-		}
+func spawnServers() []*proxy {
+	servers := []*proxy{
+		&proxy{
+			addr:     ":8001",
+			isAlive:  true,
+			isActive: false,
+		},
+		&proxy{
+			addr:     ":8003",
+			isAlive:  true,
+			isActive: true,
+		},
 	}
-	s.proxies[id].isActive = false
-	id = (id + 1) % len(s.proxies)
-	s.proxies[id].isActive = true
+	return servers
 }
 
-func NewServer(cfg config) *server {
-	servers := make([]*proxy, cfg.serverCount)
-	for i := range servers {
-		servers[i] = &proxy{addr: fmt.Sprintf("http://localhost:800%d", i)}
-	}
-
-	duration := time.Duration(cfg.pingPeriod) * time.Second
-	return &server{
+func NewLBServer(cfg config) *LBServer {
+	return &LBServer{
 		config:  cfg,
-		proxies: servers,
-		ticker:  time.NewTicker(duration),
+		proxies: spawnServers(),
+		ticker:  time.NewTicker(time.Duration(cfg.pingPeriod) * time.Second),
 		client:  &http.Client{Timeout: 5 * time.Second},
 	}
 }
 
-func writeError(conn net.Conn, status int, message string, err error) {
-	slog.Error(message, "err", err)
+func (lb *LBServer) Next() {
+	id := -1
+	for i, p := range lb.proxies {
+		if p.isActive {
+			id = i
+			p.isActive = false
+			break
+		}
+	}
 
-	responseBody := message + "\n"
+	if id == -1 {
+		fmt.Println("Handle this")
+		return
+	}
 
-	response := fmt.Sprintf(
-		"HTTP/1.1 %d %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s\n",
-		status, http.StatusText(status), len(responseBody), responseBody,
-	)
-
-	_, err = conn.Write([]byte(response))
-	if err != nil {
-		log.Printf("Failed to write error response: %v", err)
+	next := (id + 1) % len(lb.proxies)
+	nextProxy := lb.proxies[next]
+	if nextProxy.isAlive {
+		nextProxy.isActive = true
 	}
 }
 
-func (s *server) Start() error {
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
-	if err != nil {
-		return err
-	}
-
-	go s.healthChecker()
-
-	s.ln = ln
-	slog.Info("server started on port", "Portess", s.config.port)
-	return s.acceptLoop()
-}
-
-func (s *server) healthChecker() {
+func (lb *LBServer) healthChecker() {
 	for {
 		select {
-		case <-s.ticker.C:
-			fmt.Println("tick")
-
-			for i := range s.proxies {
-				p := s.proxies[i]
-				resp, err := s.client.Get(fmt.Sprintf("%s/healthcheck", p.addr))
+		case <-lb.ticker.C:
+			// send req concurrently?
+			for i := range lb.proxies {
+				p := lb.proxies[i]
+				resp, err := lb.client.Get(fmt.Sprintf("http://localhost%s/healthcheck", p.addr))
 				if err != nil {
-					slog.Error("failed to get the response from healtchecker", "err", err)
+					p.isActive = false
+					p.isAlive = false
+					fmt.Printf("Port: %s | Active: %t | p.isAlive: %t\n", p.addr, p.isActive, p.isAlive)
 					continue
 				}
 
 				if resp.StatusCode != http.StatusOK {
 					p.isAlive = false
 				}
+
+				if resp.StatusCode == http.StatusOK && !p.isAlive {
+					p.isAlive = true
+				}
+				fmt.Printf("Port: %s | Active: %t | p.isAlive: %t\n", p.addr, p.isActive, p.isAlive)
 			}
 		}
 	}
 }
 
-func (s *server) acceptLoop() error {
-	for {
-		conn, err := s.ln.Accept()
-		if err != nil {
-			slog.Error("accept error", "err", err)
-			continue
-		}
-		go s.handleConn(conn)
-	}
-}
-
-func (s *server) handleConn(conn net.Conn) {
+func (lb *LBServer) handleConn(conn net.Conn) {
 	defer conn.Close()
 
 	buffer := make([]byte, 4096)
@@ -147,17 +125,19 @@ func (s *server) handleConn(conn net.Conn) {
 	}
 
 	data := buffer[:n]
-	s.Next()
 
-	proxy := getActiveProxy(s.proxies)
+	lb.Next()
 
-	req, err := http.NewRequest("GET", proxy.addr, bytes.NewReader(data))
+	proxy := getActiveProxy(lb.proxies)
+	fmt.Println("PROXIES: ", lb.proxies, "ACtive:", proxy)
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost%s", proxy.addr), bytes.NewReader(data))
 	if err != nil {
 		writeError(conn, http.StatusInternalServerError, "Failed to create request:", err)
 		return
 	}
 
-	resp, err := s.client.Do(req)
+	resp, err := lb.client.Do(req)
 	if err != nil {
 		writeError(conn, http.StatusBadGateway, "Backend connection failed", err)
 		return
@@ -170,16 +150,30 @@ func (s *server) handleConn(conn net.Conn) {
 		return
 	}
 
-	conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %d %s\r\n", resp.StatusCode, http.StatusText(resp.StatusCode))))
-	for key, values := range resp.Header {
-		for _, value := range values {
-			conn.Write([]byte(fmt.Sprintf("%s: %s\r\n", key, value)))
-		}
-	}
-	conn.Write([]byte("\r\n"))
-	conn.Write(body)
-
+	writeResponse(conn, resp, body)
 	log.Println("Request forwarded to backend and response sent to client.")
+}
+
+func (lb *LBServer) Start() error {
+	addr := fmt.Sprintf(":%d", lb.port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	go lb.healthChecker()
+
+	lb.ln = ln
+	slog.Info("server started on", "port", lb.config.port)
+
+	for {
+		conn, err := lb.ln.Accept()
+		if err != nil {
+			slog.Error("accept error", "err", err)
+			continue
+		}
+		go lb.handleConn(conn)
+	}
 }
 
 func main() {
@@ -187,11 +181,20 @@ func main() {
 
 	flag.IntVar(&cfg.port, "port", 8000, "")
 	flag.IntVar(&cfg.pingPeriod, "ping-period", 6, "")
-	flag.IntVar(&cfg.serverCount, "server-count", 4, "")
 	flag.Parse()
 
-	s := NewServer(cfg)
-	if err := s.Start(); err != nil {
+	lb := NewLBServer(cfg)
+	if err := lb.Start(); err != nil {
 		log.Fatalf("error starting server: %v", err)
+	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	<-stop
+	log.Println("Received termination signal, shutting down...")
+
+	if err := lb.ln.Close(); err != nil {
+		log.Printf("error while closing the listener: %w", err)
 	}
 }
