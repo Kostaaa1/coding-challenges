@@ -27,8 +27,8 @@ import (
 // 	}
 // }
 
-func Healthcheck(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request: %s %s", r.Method, r.URL.Path)
+func Healthcheck(w http.ResponseWriter, r *http.Request, addr string) {
+	log.Printf("Received request %s %s %s", r.Method, r.URL.Path, addr)
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte("Hello from backend server."))
@@ -74,7 +74,9 @@ func main() {
 			defer wg.Done()
 
 			mux := http.NewServeMux()
-			mux.HandleFunc("/healthcheck", Healthcheck)
+			mux.HandleFunc("/healthcheck", func(w http.ResponseWriter, r *http.Request) {
+				Healthcheck(w, r, addr)
+			})
 			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				Index(w, r, addr)
 			})

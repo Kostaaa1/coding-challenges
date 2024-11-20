@@ -69,6 +69,22 @@ func NewServer(cfg config) *server {
 	}
 }
 
+func writeError(conn net.Conn, status int, message string, err error) {
+	slog.Error(message, "err", err)
+
+	responseBody := message + "\n"
+
+	response := fmt.Sprintf(
+		"HTTP/1.1 %d %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s\n",
+		status, http.StatusText(status), len(responseBody), responseBody,
+	)
+
+	_, err = conn.Write([]byte(response))
+	if err != nil {
+		log.Printf("Failed to write error response: %v", err)
+	}
+}
+
 func (s *server) Start() error {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil {
@@ -131,27 +147,26 @@ func (s *server) handleConn(conn net.Conn) {
 	}
 
 	data := buffer[:n]
-
 	s.Next()
 
 	proxy := getActiveProxy(s.proxies)
 
 	req, err := http.NewRequest("GET", proxy.addr, bytes.NewReader(data))
 	if err != nil {
-		log.Println("Failed to create request:", err)
+		writeError(conn, http.StatusInternalServerError, "Failed to create request:", err)
 		return
 	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		log.Println("Failed to forward request:", err)
+		writeError(conn, http.StatusBadGateway, "Backend connection failed", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("Failed to read response body:", err)
+		writeError(conn, http.StatusInternalServerError, "Failed to read backend response", err)
 		return
 	}
 
