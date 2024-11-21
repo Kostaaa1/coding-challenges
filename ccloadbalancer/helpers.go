@@ -31,12 +31,3 @@ func writeResponse(conn net.Conn, resp *http.Response, data []byte) {
 	conn.Write(data)
 	conn.Write([]byte("\r\n"))
 }
-
-func getActiveProxy(proxies []*proxy) *proxy {
-	for _, p := range proxies {
-		if p.isActive {
-			return p
-		}
-	}
-	return nil
-}

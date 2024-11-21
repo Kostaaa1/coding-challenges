@@ -62,7 +62,6 @@ func Shutdown(w http.ResponseWriter, r *http.Request, addr string) {
 	err := srv.Shutdown(ctx)
 	if err != nil {
 		if err != context.DeadlineExceeded {
-			fmt.Println("ERROR WHILE SHUTTING DOWN", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Error shutting down server"))
 		} else {
@@ -99,6 +98,7 @@ func NewServer(port string) *Server {
 func (s *Server) Start(wg *sync.WaitGroup) {
 	defer wg.Done()
 	slog.Info(fmt.Sprintf("Server started on port %s", s.Server.Addr))
+
 	err := s.Server.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
 		log.Printf("Server on port %s failed: %v", s.Server.Addr, err)
@@ -112,19 +112,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 var serverInstances []*Server
 
-func findServerByAddr(port string) *Server {
-	for _, server := range serverInstances {
-		if server.Port == port {
-			return server
-		}
-	}
-	return nil
-}
-
 func main() {
 	servers := []string{
 		"8001",
 		"8002",
+		"8003",
 	}
 
 	var wg sync.WaitGroup
@@ -138,4 +130,22 @@ func main() {
 	}
 
 	wg.Wait()
+}
+
+func findServerByAddr(port string) *Server {
+	for _, server := range serverInstances {
+		if server.Port == port {
+			return server
+		}
+	}
+	return nil
+}
+
+func removeServerByAddr(port string) *Server {
+	for i, server := range serverInstances {
+		if server.Port == port {
+			serverInstances = append(serverInstances[:i], serverInstances[i+1:]...)
+		}
+	}
+	return nil
 }

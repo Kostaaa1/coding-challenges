@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -21,17 +22,18 @@ type config struct {
 }
 
 type proxy struct {
-	addr     string
-	isAlive  bool
-	isActive bool
+	addr    string
+	isAlive bool
 }
 
 type LBServer struct {
 	config
-	ln      net.Listener
-	proxies []*proxy
-	ticker  *time.Ticker
-	client  *http.Client
+	ln            net.Listener
+	proxies       []*proxy
+	activeProxyID int
+	ticker        *time.Ticker
+	client        *http.Client
+	mu            sync.Mutex
 }
 
 func NewLBServer(cfg config) *LBServer {
@@ -41,40 +43,30 @@ func NewLBServer(cfg config) *LBServer {
 		client: &http.Client{Timeout: 5 * time.Second},
 		proxies: []*proxy{
 			{
-				addr:     ":8001",
-				isAlive:  false,
-				isActive: false,
+				addr:    ":8001",
+				isAlive: false,
 			},
 			{
-				addr:     ":8002",
-				isAlive:  false,
-				isActive: false,
+				addr:    ":8002",
+				isAlive: false,
+			},
+			{
+				addr:    ":8003",
+				isAlive: false,
 			},
 		},
 	}
 }
 
 func (lb *LBServer) Next() {
-	foundNext := false
-	for i, p := range lb.proxies {
-		if p.isActive {
-			next := (i + 1) % len(lb.proxies)
-			nextProxy := lb.proxies[next]
-			if nextProxy.isAlive {
-				p.isActive = false
-				nextProxy.isActive = true
-				foundNext = true
-			}
-			break
-		}
-	}
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
 
-	if !foundNext {
-		for _, p := range lb.proxies {
-			if p.isAlive {
-				p.isActive = true
-				break
-			}
+	for i := 0; i < len(lb.proxies); i++ {
+		next := (lb.activeProxyID + 1 + i) % len(lb.proxies)
+		if lb.proxies[next].isAlive {
+			lb.activeProxyID = next
+			return
 		}
 	}
 }
@@ -82,35 +74,28 @@ func (lb *LBServer) Next() {
 func (lb *LBServer) sendHeathcheck(p *proxy) {
 	resp, err := lb.client.Get(fmt.Sprintf("http://localhost%s/healthcheck", p.addr))
 	if err != nil {
-		p.isActive = false
+		// TODO: Dodaj eksponencijalni backoff
 		p.isAlive = false
-		fmt.Printf("Port: %s | Active: %t | p.isAlive: %t\n", p.addr, p.isActive, p.isAlive)
+		fmt.Printf("Port%s | Alive: %t\n", p.addr, p.isAlive)
 		return
 	}
 
 	p.isAlive = resp.StatusCode == http.StatusOK
-
-	fmt.Printf("Port%s | Active: %t | Alive: %t\n", p.addr, p.isActive, p.isAlive)
+	fmt.Printf("Port%s | Alive: %t\n", p.addr, p.isAlive)
 }
 
 func (lb *LBServer) healthChecker() {
-	checkAll := func() {
+	for range lb.ticker.C {
+		var wg sync.WaitGroup
 		for i := range lb.proxies {
-			p := lb.proxies[i]
-			lb.sendHeathcheck(p)
+			wg.Add(1)
+			go func(p *proxy) {
+				defer wg.Done()
+				lb.sendHeathcheck(p)
+			}(lb.proxies[i])
 		}
+		wg.Wait()
 	}
-
-	checkAll()
-
-	go func() {
-		for {
-			select {
-			case <-lb.ticker.C:
-				checkAll()
-			}
-		}
-	}()
 }
 
 func (lb *LBServer) handleConn(conn net.Conn) {
@@ -131,8 +116,8 @@ func (lb *LBServer) handleConn(conn net.Conn) {
 	data := buffer[:n]
 
 	lb.Next()
+	proxy := lb.proxies[lb.activeProxyID]
 
-	proxy := getActiveProxy(lb.proxies)
 	if proxy == nil {
 		fmt.Println("No avaiable proxies", lb.proxies[0], lb.proxies[1])
 		writeError(conn, http.StatusServiceUnavailable, "No avaiable proxies", nil)
@@ -169,10 +154,10 @@ func (lb *LBServer) Start() error {
 		return err
 	}
 
-	lb.healthChecker()
-
 	lb.ln = ln
 	slog.Info("server started on", "port", lb.config.port)
+
+	go lb.healthChecker()
 
 	for {
 		conn, err := lb.ln.Accept()
@@ -188,7 +173,7 @@ func main() {
 	var cfg config
 
 	flag.IntVar(&cfg.port, "port", 8000, "")
-	flag.IntVar(&cfg.pingPeriod, "ping-period", 6, "")
+	flag.IntVar(&cfg.pingPeriod, "ping-period", 7, "")
 	flag.Parse()
 
 	lb := NewLBServer(cfg)
