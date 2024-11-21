@@ -34,79 +34,83 @@ type LBServer struct {
 	client  *http.Client
 }
 
-func spawnServers() []*proxy {
-	servers := []*proxy{
-		&proxy{
-			addr:     ":8001",
-			isAlive:  true,
-			isActive: false,
-		},
-		&proxy{
-			addr:     ":8003",
-			isAlive:  true,
-			isActive: true,
-		},
-	}
-	return servers
-}
-
 func NewLBServer(cfg config) *LBServer {
 	return &LBServer{
-		config:  cfg,
-		proxies: spawnServers(),
-		ticker:  time.NewTicker(time.Duration(cfg.pingPeriod) * time.Second),
-		client:  &http.Client{Timeout: 5 * time.Second},
+		config: cfg,
+		ticker: time.NewTicker(time.Duration(cfg.pingPeriod) * time.Second),
+		client: &http.Client{Timeout: 5 * time.Second},
+		proxies: []*proxy{
+			{
+				addr:     ":8001",
+				isAlive:  false,
+				isActive: false,
+			},
+			{
+				addr:     ":8002",
+				isAlive:  false,
+				isActive: false,
+			},
+		},
 	}
 }
 
 func (lb *LBServer) Next() {
-	id := -1
+	foundNext := false
 	for i, p := range lb.proxies {
 		if p.isActive {
-			id = i
-			p.isActive = false
+			next := (i + 1) % len(lb.proxies)
+			nextProxy := lb.proxies[next]
+			if nextProxy.isAlive {
+				p.isActive = false
+				nextProxy.isActive = true
+				foundNext = true
+			}
 			break
 		}
 	}
 
-	if id == -1 {
-		fmt.Println("Handle this")
-		return
-	}
-
-	next := (id + 1) % len(lb.proxies)
-	nextProxy := lb.proxies[next]
-	if nextProxy.isAlive {
-		nextProxy.isActive = true
-	}
-}
-
-func (lb *LBServer) healthChecker() {
-	for {
-		select {
-		case <-lb.ticker.C:
-			// send req concurrently?
-			for i := range lb.proxies {
-				p := lb.proxies[i]
-				resp, err := lb.client.Get(fmt.Sprintf("http://localhost%s/healthcheck", p.addr))
-				if err != nil {
-					p.isActive = false
-					p.isAlive = false
-					fmt.Printf("Port: %s | Active: %t | p.isAlive: %t\n", p.addr, p.isActive, p.isAlive)
-					continue
-				}
-
-				if resp.StatusCode != http.StatusOK {
-					p.isAlive = false
-				}
-
-				if resp.StatusCode == http.StatusOK && !p.isAlive {
-					p.isAlive = true
-				}
-				fmt.Printf("Port: %s | Active: %t | p.isAlive: %t\n", p.addr, p.isActive, p.isAlive)
+	if !foundNext {
+		for _, p := range lb.proxies {
+			if p.isAlive {
+				p.isActive = true
+				break
 			}
 		}
 	}
+}
+
+func (lb *LBServer) sendHeathcheck(p *proxy) {
+	resp, err := lb.client.Get(fmt.Sprintf("http://localhost%s/healthcheck", p.addr))
+	if err != nil {
+		p.isActive = false
+		p.isAlive = false
+		fmt.Printf("Port: %s | Active: %t | p.isAlive: %t\n", p.addr, p.isActive, p.isAlive)
+		return
+	}
+
+	p.isAlive = resp.StatusCode == http.StatusOK
+
+	fmt.Printf("Port%s | Active: %t | Alive: %t\n", p.addr, p.isActive, p.isAlive)
+}
+
+func (lb *LBServer) healthChecker() {
+	checkAll := func() {
+		for i := range lb.proxies {
+			p := lb.proxies[i]
+			lb.sendHeathcheck(p)
+		}
+	}
+
+	checkAll()
+
+	go func() {
+		for {
+			select {
+			case <-lb.ticker.C:
+				checkAll()
+			}
+		}
+	}()
 }
 
 func (lb *LBServer) handleConn(conn net.Conn) {
@@ -129,7 +133,11 @@ func (lb *LBServer) handleConn(conn net.Conn) {
 	lb.Next()
 
 	proxy := getActiveProxy(lb.proxies)
-	fmt.Println("PROXIES: ", lb.proxies, "ACtive:", proxy)
+	if proxy == nil {
+		fmt.Println("No avaiable proxies", lb.proxies[0], lb.proxies[1])
+		writeError(conn, http.StatusServiceUnavailable, "No avaiable proxies", nil)
+		return
+	}
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost%s", proxy.addr), bytes.NewReader(data))
 	if err != nil {
@@ -151,7 +159,7 @@ func (lb *LBServer) handleConn(conn net.Conn) {
 	}
 
 	writeResponse(conn, resp, body)
-	log.Println("Request forwarded to backend and response sent to client.")
+	log.Println("Request received from backend and response sent to client.")
 }
 
 func (lb *LBServer) Start() error {
@@ -161,7 +169,7 @@ func (lb *LBServer) Start() error {
 		return err
 	}
 
-	go lb.healthChecker()
+	lb.healthChecker()
 
 	lb.ln = ln
 	slog.Info("server started on", "port", lb.config.port)
@@ -192,9 +200,9 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	<-stop
-	log.Println("Received termination signal, shutting down...")
 
+	log.Println("Received termination signal, shutting down...")
 	if err := lb.ln.Close(); err != nil {
-		log.Printf("error while closing the listener: %w", err)
+		fmt.Println("error while closing the listener: %w", err)
 	}
 }
