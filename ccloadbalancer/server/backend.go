@@ -1,13 +1,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"html/template"
 	"log"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -47,30 +45,6 @@ func Index(w http.ResponseWriter, r *http.Request, addr string) {
 	}
 }
 
-func Shutdown(w http.ResponseWriter, r *http.Request, addr string) {
-	port := strings.TrimPrefix(addr, ":")
-	srv := findServerByAddr(port)
-	if srv == nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Server not found"))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
-	defer cancel()
-
-	err := srv.Shutdown(ctx)
-	if err != nil {
-		if err != context.DeadlineExceeded {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Error shutting down server"))
-		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Server shut down successfully"))
-		}
-	}
-}
-
 func NewServer(port string) *Server {
 	router := httprouter.New()
 	router.HandlerFunc(http.MethodGet, "/healthcheck", func(w http.ResponseWriter, r *http.Request) {
@@ -78,9 +52,6 @@ func NewServer(port string) *Server {
 	})
 	router.HandlerFunc(http.MethodGet, "/", func(w http.ResponseWriter, r *http.Request) {
 		Index(w, r, port)
-	})
-	router.HandlerFunc(http.MethodGet, "/shutdown", func(w http.ResponseWriter, r *http.Request) {
-		Shutdown(w, r, port)
 	})
 
 	return &Server{
@@ -105,11 +76,6 @@ func (s *Server) Start(wg *sync.WaitGroup) {
 	}
 }
 
-func (s *Server) Shutdown(ctx context.Context) error {
-	slog.Info(fmt.Sprintf("Shutting down server on port %s", s.Port))
-	return s.Server.Shutdown(ctx)
-}
-
 var serverInstances []*Server
 
 func main() {
@@ -125,27 +91,8 @@ func main() {
 		go func(port string) {
 			server := NewServer(port)
 			serverInstances = append(serverInstances, server)
-			go server.Start(&wg)
+			server.Start(&wg)
 		}(port)
 	}
-
 	wg.Wait()
-}
-
-func findServerByAddr(port string) *Server {
-	for _, server := range serverInstances {
-		if server.Port == port {
-			return server
-		}
-	}
-	return nil
-}
-
-func removeServerByAddr(port string) *Server {
-	for i, server := range serverInstances {
-		if server.Port == port {
-			serverInstances = append(serverInstances[:i], serverInstances[i+1:]...)
-		}
-	}
-	return nil
 }
