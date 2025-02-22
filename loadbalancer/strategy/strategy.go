@@ -7,7 +7,7 @@ import (
 )
 
 type ILBStrategy interface {
-	Next(w http.ResponseWriter, r *http.Request) *models.Server
+	Next(w http.ResponseWriter, r *http.Request) *models.Server // it always needs to return healthy server or nil
 	UpdateServers(servers []*models.Server)
 }
 
@@ -17,6 +17,8 @@ func GetLBStrategy(strategy string) ILBStrategy {
 		return NewRoundRobinStrategy()
 	case "sticky_session":
 		return NewStickySessionStrategy()
+	case "round_robin_weighted":
+		return NewRoundRobinStrategy()
 	default:
 		return NewRoundRobinStrategy()
 	}

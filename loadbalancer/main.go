@@ -12,13 +12,12 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load("/home/kosta/go/src/loadbalancer/config.json")
+	cfg, err := config.Load("lb_config.json")
 	if err != nil {
 		panic(err)
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-
 	loadbalancer := lb.NewLoadbalancer(cfg, logger)
 
 	srv := http.Server{

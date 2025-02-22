@@ -15,7 +15,7 @@ type Checker struct {
 	servers    []*models.Server
 	httpClient *http.Client
 	logger     *slog.Logger
-	sync.RWMutex
+	// sync.RWMutex
 }
 
 func NewHealthchecker(servers []*models.Server, logger *slog.Logger) *Checker {
@@ -60,7 +60,6 @@ func (h *Checker) run() {
 
 	for _, srv := range h.servers {
 		wg.Add(1)
-
 		go func(srv *models.Server) {
 			defer wg.Done()
 			h.check(srv)
@@ -71,7 +70,6 @@ func (h *Checker) run() {
 }
 
 // TODO: reduce unnecessary checks for the servers that are unhealthy
-
 func (h *Checker) check(srv *models.Server) {
 	u := fmt.Sprintf("%s%s", srv.URL, srv.HealthURL)
 
@@ -86,8 +84,8 @@ func (h *Checker) check(srv *models.Server) {
 }
 
 func (h *Checker) updateHealthStatus(srv *models.Server, status bool) {
-	h.Lock()
-	defer h.Unlock()
+	srv.Lock()
+	defer srv.Unlock()
 
 	if srv.Healthy == status {
 		return

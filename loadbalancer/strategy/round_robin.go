@@ -27,7 +27,6 @@ func (s *RoundRobinStrategy) Next(w http.ResponseWriter, r *http.Request) *model
 
 	srv := s.servers[s.index]
 	s.index = (s.index + 1) % len(s.servers)
-
 	return srv
 }
 

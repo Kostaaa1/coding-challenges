@@ -12,15 +12,15 @@ func ConfigPath() (string, error) {
 	}
 
 	for {
-		js := filepath.Join(wd, "config.json")
+		js := filepath.Join(wd, "lb_config.json")
 		if _, err := os.Stat(js); err == nil {
 			return js, err
 		}
-		yml := filepath.Join(wd, "config.yml")
+		yml := filepath.Join(wd, "lb_config.yml")
 		if _, err := os.Stat(yml); err == nil {
 			return yml, err
 		}
-		xml := filepath.Join(wd, "config.xml")
+		xml := filepath.Join(wd, "lb_config.xml")
 		if _, err := os.Stat(xml); err == nil {
 			return xml, err
 		}

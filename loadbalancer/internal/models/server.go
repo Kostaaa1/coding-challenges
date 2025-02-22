@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -11,6 +12,7 @@ type Server struct {
 	URL       string `json:"url" yaml:"url"`
 	HealthURL string `json:"health_url" yaml:"health_url"`
 	Healthy   bool   `json:"healthy"`
+	sync.Mutex
 }
 
 func (s *Server) UnmarshalJSON(data []byte) error {

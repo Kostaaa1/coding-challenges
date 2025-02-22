@@ -66,60 +66,35 @@ func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	parsed, _ := url.Parse(srv.URL)
 	proxy := httputil.NewSingleHostReverseProxy(parsed)
 	proxy.Transport = defaultTransport
-
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		l.logger.Error(BackendError, "server", srv.URL, "client_ip", r.UserAgent(), "error", err.Error())
-
-		// var netErr *net.OpError // catching connection refused error
-		// if errors.As(err, &netErr) {
-		// 	http.SetCookie(w, &http.Cookie{
-		// 		Name:    strategy.SessionCookieName,
-		// 		Value:   "",
-		// 		MaxAge:  -1,
-		// 		Expires: time.Unix(0, 0),
-		// 	})
-		// 	l.Lock()
-		// 	srv.Healthy = false
-		// 	l.Unlock()
-		// 	newSrv := l.FindHealthyServer()
-		// 	if newSrv == nil {
-		// 		l.logger.Info(NoHealthyBackend, "url", r.URL.String())
-		// 		w.WriteHeader(http.StatusServiceUnavailable)
-		// 		w.Write([]byte("503 Service Unavailable - No backend servers available"))
-		// 		return
-		// 	}
-		// 	l.logger.Warn(RequestRetry, "from", srv.URL, "to", newSrv.URL)
-		// 	newParsed, _ := url.Parse(newSrv.URL)
-		// 	newProxy := httputil.NewSingleHostReverseProxy(newParsed)
-		// 	newProxy.Transport = defaultTransport
-		// 	newProxy.ServeHTTP(w, r)
-		// 	l.logger.Info(RequestCompleted, "server", newSrv.URL, "status", w.WriteHeader, "latency_ms", time.Since(start).Milliseconds())
-		// 	return
-		// }
-
 	}
 
 	l.logger.Info(RequestCompleted, "server", srv.URL, "status", w.WriteHeader, "latency_ms", time.Since(start).Milliseconds())
 	proxy.ServeHTTP(w, r)
 }
 
-func (l *loadBalancer) FindHealthyServer() *models.Server {
-	l.Lock()
-	defer l.Unlock()
-
-	for _, srv := range l.servers {
-		if srv.Healthy {
-			return srv
-		}
-	}
-
-	return nil
-}
-
 func (l *loadBalancer) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	l.RLock()
 	defer l.RUnlock()
 	return l.strategy.Next(w, r)
+}
+
+func (l *loadBalancer) Add(srv *models.Server) {
+	l.Lock()
+	defer l.Unlock()
+	l.servers = append(l.servers, srv)
+}
+
+func (l *loadBalancer) Remove(srv *models.Server) {
+	l.Lock()
+	defer l.Unlock()
+	for i, server := range l.servers {
+		if server.Name == srv.Name {
+			l.servers = append(l.servers[:i], l.servers[i+1:]...)
+			return
+		}
+	}
 }
 
 func NewLoadbalancer(cfg *config.Config, logger *slog.Logger) ILoadbalancer {

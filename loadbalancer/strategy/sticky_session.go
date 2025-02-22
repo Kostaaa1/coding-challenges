@@ -1,11 +1,11 @@
 package strategy
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	mathrand "math/rand"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/Kostaaa1/loadbalancer/internal/models"
 )
@@ -25,24 +25,29 @@ func NewStickySessionStrategy() ILBStrategy {
 }
 
 func generateSessionID() string {
-	rand.Seed(time.Now().UnixNano())
-	return fmt.Sprintf("%d", rand.Intn(1000000))
+	randBytes := make([]byte, 4)
+	rand.Read(randBytes)
+	return fmt.Sprintf("%x", randBytes)
 }
 
 func (s *StickySessionStrategy) serverFromSession(sessionID string) *models.Server {
-	s.RLock()
-	defer s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
 
 	if server, exists := sessionMap[sessionID]; exists {
 		return server
 	}
 
-	rand.Shuffle(len(s.servers), func(i, j int) {
+	mathrand.Shuffle(len(s.servers), func(i, j int) {
 		s.servers[i], s.servers[j] = s.servers[j], s.servers[i]
 	})
 
 	for _, srv := range s.servers {
-		if srv.Healthy {
+		srv.Lock()
+		healthy := srv.Healthy
+		srv.Unlock()
+
+		if healthy {
 			sessionMap[sessionID] = srv
 			return srv
 		}
