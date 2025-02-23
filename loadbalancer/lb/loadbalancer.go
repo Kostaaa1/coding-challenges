@@ -1,4 +1,4 @@
-package lb
+package loadbalancer
 
 import (
 	"context"
@@ -37,15 +37,25 @@ var (
 	}
 )
 
-type ILoadbalancer interface {
-	http.Handler
-}
+// type ILoadbalancer interface {
+// 	http.Handler
+// }
 
 type loadBalancer struct {
 	servers  []*models.Server
 	strategy strategy.ILBStrategy
 	logger   *slog.Logger
 	sync.RWMutex
+}
+
+type statusResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusResponseWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
 }
 
 func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -70,8 +80,9 @@ func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		l.logger.Error(BackendError, "server", srv.URL, "client_ip", r.UserAgent(), "error", err.Error())
 	}
 
-	l.logger.Info(RequestCompleted, "server", srv.URL, "status", w.WriteHeader, "latency_ms", time.Since(start).Milliseconds())
-	proxy.ServeHTTP(w, r)
+	statusRecorder := &statusResponseWriter{ResponseWriter: w}
+	proxy.ServeHTTP(statusRecorder, r)
+	l.logger.Info(RequestCompleted, "server", srv.URL, "status", statusRecorder.status, "latency_ms", time.Since(start).Milliseconds())
 }
 
 func (l *loadBalancer) Next(w http.ResponseWriter, r *http.Request) *models.Server {
@@ -80,7 +91,7 @@ func (l *loadBalancer) Next(w http.ResponseWriter, r *http.Request) *models.Serv
 	return l.strategy.Next(w, r)
 }
 
-func (l *loadBalancer) Add(srv *models.Server) {
+func (l *loadBalancer) AddServer(srv *models.Server) {
 	l.Lock()
 	defer l.Unlock()
 	l.servers = append(l.servers, srv)
@@ -97,9 +108,8 @@ func (l *loadBalancer) Remove(srv *models.Server) {
 	}
 }
 
-func NewLoadbalancer(cfg *config.Config, logger *slog.Logger) ILoadbalancer {
-	lbStrategy := strategy.GetLBStrategy(cfg.Strategy)
-	lbStrategy.UpdateServers(cfg.Servers)
+func New(cfg *config.Config, logger *slog.Logger) *loadBalancer {
+	lbStrategy := strategy.GetLBStrategy(cfg.Strategy, cfg.Servers)
 
 	ch := NewHealthchecker(cfg.Servers, logger)
 	ch.Start(context.Background(), cfg.HealthCheckIntervalSeconds)

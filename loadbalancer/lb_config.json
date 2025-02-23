@@ -1,6 +1,7 @@
 {
+  "$schema": "lb_config.schema.json",
   "port": "4000",
-  "strategy": "sticky_session",
+  "strategy": "weighted_round_robin",
   "health_check_interval_seconds": 5,
   "rate_limiter_enabled": true,
   "rate_limit_tokens": 10,
@@ -22,19 +23,7 @@
       "name": "server3",
       "url": "http://localhost:8060",
       "health_url": "/health",
-      "weight": 2
-    },
-    {
-      "name": "server4",
-      "url": "http://localhost:8082",
-      "health_url": "/health",
-      "weight": 2
-    },
-    {
-      "name": "server5",
-      "url": "http://localhost:8081",
-      "health_url": "/health",
-      "weight": 2
+      "weight": 3
     }
   ],
   "tls_enabled": true,

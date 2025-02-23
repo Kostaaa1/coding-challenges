@@ -13,8 +13,8 @@ type RoundRobinStrategy struct {
 	sync.RWMutex
 }
 
-func NewRoundRobinStrategy() ILBStrategy {
-	return &RoundRobinStrategy{index: 0}
+func NewRoundRobinStrategy(servers []*models.Server) ILBStrategy {
+	return &RoundRobinStrategy{index: 0, servers: servers}
 }
 
 func (s *RoundRobinStrategy) Next(w http.ResponseWriter, r *http.Request) *models.Server {
@@ -30,9 +30,9 @@ func (s *RoundRobinStrategy) Next(w http.ResponseWriter, r *http.Request) *model
 	return srv
 }
 
-func (s *RoundRobinStrategy) UpdateServers(servers []*models.Server) {
-	s.Lock()
-	defer s.Unlock()
-	s.servers = servers
-	s.index = 0
-}
+// func (s *RoundRobinStrategy) UpdateServers(servers []*models.Server) {
+// 	s.Lock()
+// 	defer s.Unlock()
+// 	s.servers = servers
+// 	s.index = 0
+// }

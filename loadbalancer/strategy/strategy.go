@@ -8,18 +8,17 @@ import (
 
 type ILBStrategy interface {
 	Next(w http.ResponseWriter, r *http.Request) *models.Server // it always needs to return healthy server or nil
-	UpdateServers(servers []*models.Server)
 }
 
-func GetLBStrategy(strategy string) ILBStrategy {
+func GetLBStrategy(strategy string, servers []*models.Server) ILBStrategy {
 	switch strategy {
 	case "round_robin":
-		return NewRoundRobinStrategy()
+		return NewRoundRobinStrategy(servers)
 	case "sticky_session":
 		return NewStickySessionStrategy()
-	case "round_robin_weighted":
-		return NewRoundRobinStrategy()
+	case "weighted_round_robin":
+		return NewWeightedRoundRobin(servers)
 	default:
-		return NewRoundRobinStrategy()
+		return NewRoundRobinStrategy(servers)
 	}
 }

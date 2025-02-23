@@ -73,7 +73,9 @@ func (s *StickySessionStrategy) Next(w http.ResponseWriter, r *http.Request) *mo
 		sessionID = cookie.Value
 	}
 
-	return s.serverFromSession(sessionID)
+	srv := s.serverFromSession(sessionID)
+	fmt.Println(sessionMap)
+	return srv
 }
 
 func (s *StickySessionStrategy) UpdateServers(servers []*models.Server) {

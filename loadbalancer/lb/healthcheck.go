@@ -1,10 +1,11 @@
-package lb
+package loadbalancer
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +16,7 @@ type Checker struct {
 	servers    []*models.Server
 	httpClient *http.Client
 	logger     *slog.Logger
-	// sync.RWMutex
+	sync.RWMutex
 }
 
 func NewHealthchecker(servers []*models.Server, logger *slog.Logger) *Checker {
@@ -60,9 +61,9 @@ func (h *Checker) run() {
 
 	for _, srv := range h.servers {
 		wg.Add(1)
-		go func(srv *models.Server) {
+		go func(s *models.Server) {
 			defer wg.Done()
-			h.check(srv)
+			h.check(s)
 		}(srv)
 	}
 
@@ -71,6 +72,9 @@ func (h *Checker) run() {
 
 // TODO: reduce unnecessary checks for the servers that are unhealthy
 func (h *Checker) check(srv *models.Server) {
+	if !strings.HasPrefix(srv.HealthURL, "/") {
+		srv.HealthURL = "/" + srv.HealthURL
+	}
 	u := fmt.Sprintf("%s%s", srv.URL, srv.HealthURL)
 
 	resp, err := h.httpClient.Get(u)
@@ -80,7 +84,10 @@ func (h *Checker) check(srv *models.Server) {
 	}
 	defer resp.Body.Close()
 
-	h.updateHealthStatus(srv, resp.StatusCode == http.StatusOK)
+	status := resp.StatusCode == http.StatusOK
+	if srv.Healthy && !status || !srv.Healthy && status {
+		h.updateHealthStatus(srv, status)
+	}
 }
 
 func (h *Checker) updateHealthStatus(srv *models.Server, status bool) {

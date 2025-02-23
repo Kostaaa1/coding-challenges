@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -8,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Kostaaa1/loadbalancer/internal/config"
-	"github.com/Kostaaa1/loadbalancer/lb"
+	loadbalancer "github.com/Kostaaa1/loadbalancer/lb"
 )
 
 func main() {
@@ -17,17 +18,25 @@ func main() {
 		panic(err)
 	}
 
+	fmt.Println(cfg.Servers)
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	loadbalancer := lb.NewLoadbalancer(cfg, logger)
+	lb := loadbalancer.New(cfg, logger)
+	fmt.Println(cfg.Servers)
+
+	mux := http.NewServeMux()
+
+	mux.Handle("/", lb)
+	mux.HandleFunc("/lb-add-server", lb.AddServerHandler)
 
 	srv := http.Server{
 		Addr:         cfg.Port,
-		Handler:      loadbalancer,
+		Handler:      mux,
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
 
-	logger.Info(lb.LoadbalancerStarted, "port", srv.Addr, "strategy", cfg.Strategy, "healtcheck_interval", cfg.HealthCheckIntervalSeconds)
+	logger.Info(loadbalancer.LoadbalancerStarted, "port", srv.Addr, "strategy", cfg.Strategy, "healtcheck_interval", cfg.HealthCheckIntervalSeconds)
 	log.Fatal(srv.ListenAndServe())
 }

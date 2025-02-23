@@ -12,7 +12,8 @@ type Server struct {
 	URL       string `json:"url" yaml:"url"`
 	HealthURL string `json:"health_url" yaml:"health_url"`
 	Healthy   bool   `json:"healthy"`
-	sync.Mutex
+	Weight    int    `json:"weight"`
+	sync.RWMutex
 }
 
 func (s *Server) UnmarshalJSON(data []byte) error {
@@ -21,6 +22,7 @@ func (s *Server) UnmarshalJSON(data []byte) error {
 		URL       string `json:"url"`
 		HealthURL string `json:"health_url"`
 		Healthy   *bool  `json:"healthy"`
+		Weight    int    `json:"weight"`
 	}{}
 
 	if err := json.Unmarshal(data, &aux); err != nil {
@@ -30,6 +32,7 @@ func (s *Server) UnmarshalJSON(data []byte) error {
 	s.Name = aux.Name
 	s.URL = aux.URL
 	s.HealthURL = aux.HealthURL
+	s.Weight = aux.Weight
 
 	if aux.Healthy == nil {
 		s.Healthy = true
@@ -46,6 +49,7 @@ func (s *Server) UnmarshalYAML(data []byte) error {
 		URL       string `yaml:"url"`
 		HealthURL string `yaml:"health_url"`
 		Healthy   *bool  `yaml:"Healthy"`
+		Weight    int    `yaml:"weight"`
 	}{}
 
 	if err := yaml.Unmarshal(data, &aux); err != nil {
@@ -55,6 +59,7 @@ func (s *Server) UnmarshalYAML(data []byte) error {
 	s.Name = aux.Name
 	s.URL = aux.URL
 	s.HealthURL = aux.HealthURL
+	s.Weight = aux.Weight
 
 	if aux.Healthy == nil {
 		s.Healthy = true
