@@ -22,10 +22,8 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	lb := loadbalancer.New(cfg, logger)
-	fmt.Println(cfg.Servers)
 
 	mux := http.NewServeMux()
-
 	mux.Handle("/", lb)
 	mux.HandleFunc("/lb-add-server", lb.AddServerHandler)
 

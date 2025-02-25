@@ -17,7 +17,11 @@ func GetLBStrategy(strategy string, servers []*models.Server) ILBStrategy {
 	case "sticky_session":
 		return NewStickySessionStrategy()
 	case "weighted_round_robin":
-		return NewWeightedRoundRobin(servers)
+		return NewWRRStrategy(servers)
+	case "smooth_weighted_round_robin":
+		return NewSmoothWRRStrategy(servers)
+	case "least_connections":
+		return NewLeastConnectionsStrategy(servers)
 	default:
 		return NewRoundRobinStrategy(servers)
 	}

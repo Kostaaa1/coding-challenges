@@ -8,15 +8,30 @@ import (
 	"github.com/Kostaaa1/loadbalancer/internal/models"
 )
 
-type WeightedRoundRobinStrategy struct {
-	servers     []*models.Server
-	weightsMap  map[string]int
-	index       int
-	totalWeight int
-	sync.Mutex
+type WRR struct {
+	servers []*models.Server
+	cw      []int
+	index   int
+	sync.RWMutex
 }
 
-func (s *WeightedRoundRobinStrategy) Next(w http.ResponseWriter, r *http.Request) *models.Server {
+func (s *WRR) isCycleOver() bool {
+	for _, w := range s.cw {
+		if w > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *WRR) resetWeights() bool {
+	for i := range s.cw {
+		s.cw[i] = s.servers[i].Weight
+	}
+	return true
+}
+
+func (s *WRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	s.Lock()
 	defer s.Unlock()
 
@@ -26,13 +41,13 @@ func (s *WeightedRoundRobinStrategy) Next(w http.ResponseWriter, r *http.Request
 
 	for {
 		srv := s.servers[s.index]
-		if s.weightsMap[srv.Name] > 0 {
-			s.weightsMap[srv.Name]--
+		if s.cw[s.index] > 0 && srv.Healthy {
+			s.cw[s.index]--
 			s.index = (s.index + 1) % len(s.servers)
 			return srv
 		}
 
-		if s.allWeightsZero() {
+		if s.isCycleOver() {
 			s.resetWeights()
 		}
 
@@ -40,58 +55,19 @@ func (s *WeightedRoundRobinStrategy) Next(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func (s *WeightedRoundRobinStrategy) allWeightsZero() bool {
-	for _, w := range s.weightsMap {
-		if w > 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func (s *WeightedRoundRobinStrategy) resetWeights() {
-	for _, srv := range s.servers {
-		s.weightsMap[srv.Name] = srv.Weight
-	}
-}
-
-func NewWeightedRoundRobin(servers []*models.Server) ILBStrategy {
+func NewWRRStrategy(servers []*models.Server) ILBStrategy {
 	sort.Slice(servers, func(i, j int) bool {
 		return servers[i].Weight > servers[j].Weight
 	})
-	return &WeightedRoundRobinStrategy{
-		servers:     servers,
-		weightsMap:  newWeightsMap(servers),
-		index:       0,
-		totalWeight: sumWeights(servers),
-	}
-}
 
-// UpdateServers updates the list of servers and resets weight mappings.
-// func (s *WeightedRoundRobinStrategy) UpdateServers(servers []*models.Server) {
-// 	s.Lock()
-// 	defer s.Unlock()
-// 	sort.Slice(servers, func(i, j int) bool {
-// 		return servers[i].Weight > servers[j].Weight
-// 	})
-// 	s.servers = servers
-// 	s.weightsMap = newWeightsMap(servers)
-// 	s.index = 0
-// 	s.totalWeight = sumWeights(servers)
-// }
-
-func newWeightsMap(servers []*models.Server) map[string]int {
-	wm := make(map[string]int, len(servers))
-	for _, srv := range servers {
-		wm[srv.Name] = srv.Weight
+	cw := make([]int, len(servers))
+	for i, srv := range servers {
+		cw[i] = srv.Weight
 	}
-	return wm
-}
 
-func sumWeights(servers []*models.Server) int {
-	total := 0
-	for _, srv := range servers {
-		total += srv.Weight
+	return &WRR{
+		servers: servers,
+		cw:      cw,
+		index:   0,
 	}
-	return total
 }

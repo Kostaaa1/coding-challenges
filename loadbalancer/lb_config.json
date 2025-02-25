@@ -11,19 +11,19 @@
       "name": "server1",
       "url": "http://localhost:8080",
       "health_url": "/health",
-      "weight": 1
+      "weight": 2
     },
     {
       "name": "server2",
       "url": "http://localhost:8070",
       "health_url": "/health",
-      "weight": 2
+      "weight": 3
     },
     {
       "name": "server3",
       "url": "http://localhost:8060",
       "health_url": "/health",
-      "weight": 3
+      "weight": 5
     }
   ],
   "tls_enabled": true,
