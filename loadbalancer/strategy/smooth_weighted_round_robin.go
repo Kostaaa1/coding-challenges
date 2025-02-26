@@ -14,14 +14,14 @@ type SmoothWRR struct {
 	sync.RWMutex
 }
 
-func max(nums []int) (int, int) {
-	i, max := 0, nums[0]
-	for id, n := range nums {
-		if n > max {
-			i, max = id, n
+func maxIndex(nums []int) int {
+	maxId := 0
+	for i := 1; i < len(nums); i++ {
+		if nums[i] > nums[maxId] {
+			maxId = i
 		}
 	}
-	return i, max
+	return maxId
 }
 
 func (s *SmoothWRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
@@ -33,19 +33,21 @@ func (s *SmoothWRR) Next(w http.ResponseWriter, r *http.Request) *models.Server 
 	}
 
 	for i, srv := range s.servers {
-		s.cw[i] += srv.Weight
+		if srv.Healthy {
+			s.cw[i] += srv.Weight
+		}
 	}
 
-	maxId, _ := max(s.cw)
-	s.cw[maxId] -= s.totalWeight
+	maxIdx := maxIndex(s.cw)
+	s.cw[maxIdx] -= s.totalWeight
 
-	return s.servers[maxId]
+	return s.servers[maxIdx]
 }
 
 func NewSmoothWRRStrategy(servers []*models.Server) ILBStrategy {
 	cw := make([]int, len(servers))
-
 	totalWeight := 0
+
 	for _, srv := range servers {
 		totalWeight += srv.Weight
 	}
