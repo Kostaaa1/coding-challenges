@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "port": {
+      "type": "string",
+      "description": "The port on which the load balancer will listen."
+    },
+    "strategy": {
+      "type": "string",
+      "enum": [
+        "round_robin",
+        "weighted_round_robin",
+        "random",
+        "smooth_weighted_round_robin",
+        "least_connections",
+        "sticky_session"
+      ],
+      "description": "The load balancing strategy to use."
+    },
+    "servers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the server."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The URL of the server."
+          },
+          "health_url": {
+            "type": "string",
+            "format": "string",
+            "description": "The health check endpoint of the server."
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The weight of the server (used in weighted strategies)."
+          }
+        },
+        "required": ["name", "url", "health_url"]
+      }
+    }
+  },
+  "required": ["port", "strategy", "servers"]
+}

@@ -9,10 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -21,87 +18,66 @@ type config struct {
 	pingPeriod int
 }
 
-type proxy struct {
+type backend struct {
 	addr    string
 	isAlive bool
 }
 
 type LBServer struct {
 	config
-	ln            net.Listener
-	proxies       []*proxy
-	activeProxyID int
-	ticker        *time.Ticker
-	client        *http.Client
-	mu            sync.Mutex
-}
-
-func NewLBServer(cfg config) *LBServer {
-	return &LBServer{
-		config: cfg,
-		ticker: time.NewTicker(time.Duration(cfg.pingPeriod) * time.Second),
-		client: &http.Client{Timeout: 5 * time.Second},
-		proxies: []*proxy{
-			{
-				addr:    ":8001",
-				isAlive: false,
-			},
-			{
-				addr:    ":8002",
-				isAlive: false,
-			},
-			{
-				addr:    ":8003",
-				isAlive: false,
-			},
-		},
-	}
+	listener        net.Listener
+	backends        []*backend
+	activeBackendID int
+	ticker          *time.Ticker
+	client          *http.Client
+	mu              sync.Mutex
 }
 
 func (lb *LBServer) Next() {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
 
-	for i := 0; i < len(lb.proxies); i++ {
-		next := (lb.activeProxyID + 1 + i) % len(lb.proxies)
-		if lb.proxies[next].isAlive {
-			lb.activeProxyID = next
+	for i := 0; i < len(lb.backends); i++ {
+		next := (lb.activeBackendID + 1 + i) % len(lb.backends)
+		if lb.backends[next].isAlive {
+			lb.activeBackendID = next
 			return
 		}
 	}
 }
 
-func (lb *LBServer) sendHeathcheck(p *proxy) {
-	resp, err := lb.client.Get(fmt.Sprintf("http://localhost%s/healthcheck", p.addr))
+func (lb *LBServer) sendHeathcheck(b *backend) {
+	resp, err := lb.client.Get(fmt.Sprintf("http://localhost%s/healthcheck", b.addr))
 	if err != nil {
 		// TODO: Dodaj eksponencijalni backoff
-		p.isAlive = false
-		fmt.Printf("Port%s | Alive: %t\n", p.addr, p.isAlive)
+		b.isAlive = false
+		fmt.Printf("Port%s | Alive: %t\n", b.addr, b.isAlive)
 		return
 	}
-
-	p.isAlive = resp.StatusCode == http.StatusOK
-	fmt.Printf("Port%s | Alive: %t\n", p.addr, p.isAlive)
+	b.isAlive = resp.StatusCode == http.StatusOK
+	fmt.Printf("Port%s | Alive: %t\n", b.addr, b.isAlive)
 }
 
 func (lb *LBServer) healthChecker() {
-	for range lb.ticker.C {
-		var wg sync.WaitGroup
-		for i := range lb.proxies {
-			wg.Add(1)
-			go func(p *proxy) {
-				defer wg.Done()
-				lb.sendHeathcheck(p)
-			}(lb.proxies[i])
+	go func() {
+		for range lb.ticker.C {
+			var wg sync.WaitGroup
+			for i := range lb.backends {
+				wg.Add(1)
+				go func(p *backend) {
+					defer wg.Done()
+					lb.sendHeathcheck(p)
+				}(lb.backends[i])
+			}
+			wg.Wait()
 		}
-		wg.Wait()
-	}
+	}()
 }
 
 func (lb *LBServer) handleConn(conn net.Conn) {
 	defer conn.Close()
 
-	buffer := make([]byte, 4096)
+	buffer := make([]byte, 1028)
 
 	n, err := conn.Read(buffer)
 	if err != nil {
@@ -116,10 +92,10 @@ func (lb *LBServer) handleConn(conn net.Conn) {
 	data := buffer[:n]
 
 	lb.Next()
-	proxy := lb.proxies[lb.activeProxyID]
 
+	proxy := lb.backends[lb.activeBackendID]
 	if proxy == nil {
-		fmt.Println("No avaiable proxies", lb.proxies[0], lb.proxies[1])
+		fmt.Println("No avaiable proxies", lb.backends[0], lb.backends[1])
 		writeError(conn, http.StatusServiceUnavailable, "No avaiable proxies", nil)
 		return
 	}
@@ -142,25 +118,49 @@ func (lb *LBServer) handleConn(conn net.Conn) {
 		writeError(conn, http.StatusInternalServerError, "Failed to read backend response", err)
 		return
 	}
+	fmt.Println("RESPO:", string(body))
 
 	writeResponse(conn, resp, body)
 	log.Println("Request received from backend and response sent to client.")
 }
 
+func NewLBServer(cfg config) *LBServer {
+	return &LBServer{
+		config: cfg,
+		ticker: time.NewTicker(time.Duration(cfg.pingPeriod) * time.Second),
+		client: &http.Client{Timeout: 5 * time.Second},
+		backends: []*backend{
+			{
+				addr:    ":8001",
+				isAlive: false,
+			},
+			{
+				addr:    ":8002",
+				isAlive: false,
+			},
+			{
+				addr:    ":8003",
+				isAlive: false,
+			},
+		},
+	}
+}
+
 func (lb *LBServer) Start() error {
 	addr := fmt.Sprintf(":%d", lb.port)
+
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 
-	lb.ln = ln
+	lb.listener = ln
 	slog.Info("server started on", "port", lb.config.port)
 
-	go lb.healthChecker()
+	lb.healthChecker()
 
 	for {
-		conn, err := lb.ln.Accept()
+		conn, err := lb.listener.Accept()
 		if err != nil {
 			slog.Error("accept error", "err", err)
 			continue
@@ -171,7 +171,6 @@ func (lb *LBServer) Start() error {
 
 func main() {
 	var cfg config
-
 	flag.IntVar(&cfg.port, "port", 8000, "")
 	flag.IntVar(&cfg.pingPeriod, "ping-period", 7, "")
 	flag.Parse()
@@ -179,15 +178,5 @@ func main() {
 	lb := NewLBServer(cfg)
 	if err := lb.Start(); err != nil {
 		log.Fatalf("error starting server: %v", err)
-	}
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
-	<-stop
-
-	log.Println("Received termination signal, shutting down...")
-	if err := lb.ln.Close(); err != nil {
-		fmt.Println("error while closing the listener: %w", err)
 	}
 }

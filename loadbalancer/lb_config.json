@@ -1,0 +1,32 @@
+{
+  "$schema": "lb_config.schema.json",
+  "port": "4000",
+  "strategy": "weighted_round_robin",
+  "health_check_interval_seconds": 5,
+  "rate_limiter_enabled": true,
+  "rate_limit_tokens": 10,
+  "rate_limit_interval_seconds": 1,
+  "servers": [
+    {
+      "name": "server1",
+      "url": "http://localhost:8080",
+      "health_url": "/health",
+      "weight": 2
+    },
+    {
+      "name": "server2",
+      "url": "http://localhost:8070",
+      "health_url": "/health",
+      "weight": 3
+    },
+    {
+      "name": "server3",
+      "url": "http://localhost:8060",
+      "health_url": "/health",
+      "weight": 5
+    }
+  ],
+  "tls_enabled": true,
+  "tls_cert_file": "/path/to/cert.pem",
+  "tls_key_file": "/path/to/key.pem"
+}
