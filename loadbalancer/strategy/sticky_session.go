@@ -15,13 +15,13 @@ var (
 	SessionCookieName = "lb_cookie"
 )
 
-type StickySessionStrategy struct {
+type StickySession struct {
 	servers []*models.Server
 	sync.RWMutex
 }
 
 func NewStickySessionStrategy() ILBStrategy {
-	return &StickySessionStrategy{}
+	return &StickySession{}
 }
 
 func generateSessionID() string {
@@ -30,7 +30,7 @@ func generateSessionID() string {
 	return fmt.Sprintf("%x", randBytes)
 }
 
-func (s *StickySessionStrategy) serverFromSession(sessionID string) *models.Server {
+func (s *StickySession) serverFromSession(sessionID string) *models.Server {
 	s.Lock()
 	defer s.Unlock()
 
@@ -56,7 +56,7 @@ func (s *StickySessionStrategy) serverFromSession(sessionID string) *models.Serv
 	return nil
 }
 
-func (s *StickySessionStrategy) Next(w http.ResponseWriter, r *http.Request) *models.Server {
+func (s *StickySession) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	cookie, err := r.Cookie(SessionCookieName)
 
 	var sessionID string
@@ -78,7 +78,7 @@ func (s *StickySessionStrategy) Next(w http.ResponseWriter, r *http.Request) *mo
 	return srv
 }
 
-func (s *StickySessionStrategy) UpdateServers(servers []*models.Server) {
+func (s *StickySession) UpdateServers(servers []*models.Server) {
 	s.Lock()
 	defer s.Unlock()
 	s.servers = servers

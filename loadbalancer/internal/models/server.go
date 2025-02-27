@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 
 	"gopkg.in/yaml.v3"
 )
@@ -13,6 +14,7 @@ type Server struct {
 	HealthURL string `json:"health_url" yaml:"health_url"`
 	Healthy   bool   `json:"healthy"`
 	Weight    int    `json:"weight"`
+	ConnCount atomic.Int32
 	sync.RWMutex
 }
 

@@ -9,43 +9,36 @@ import (
 
 type LeastConnections struct {
 	servers []*models.Server
-	conns   []int
 	sync.RWMutex
 }
 
 func (s *LeastConnections) Next(w http.ResponseWriter, r *http.Request) *models.Server {
-	s.Lock()
-	defer s.Unlock()
-
 	if len(s.servers) == 0 {
 		return nil
 	}
 
-	minId := 0
-	for i := 1; i < len(s.conns); i++ {
-		if s.conns[i] < s.conns[minId] {
-			minId = i
+	minIdx := -1
+	minConn := int32(^uint32(0) >> 1)
+
+	for i, srv := range s.servers {
+		if srv.Healthy {
+			conns := srv.ConnCount.Load()
+			if conns < minConn {
+				minConn = conns
+				minIdx = i
+			}
 		}
 	}
 
-	return s.servers[minId]
-}
+	if minIdx == -1 {
+		return nil
+	}
 
-func (s *LeastConnections) increment(id int) {
-	s.Lock()
-	s.conns[id]++
-	s.Unlock()
-}
-
-func (s *LeastConnections) decrement(id int) {
-	s.Lock()
-	s.conns[id]--
-	s.Unlock()
+	return s.servers[minIdx]
 }
 
 func NewLeastConnectionsStrategy(servers []*models.Server) ILBStrategy {
 	return &LeastConnections{
 		servers: servers,
-		conns:   make([]int, len(servers)),
 	}
 }
