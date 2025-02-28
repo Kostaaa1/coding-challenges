@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Kostaaa1/loadbalancer/internal/balancer"
 	"github.com/Kostaaa1/loadbalancer/internal/config"
 	"github.com/Kostaaa1/loadbalancer/internal/models"
-	"github.com/Kostaaa1/loadbalancer/strategy"
 )
 
 var (
@@ -49,7 +49,7 @@ func (w *statusResponseWriter) WriteHeader(code int) {
 
 type loadBalancer struct {
 	servers      []*models.Server
-	strategy     strategy.ILBStrategy
+	strategy     balancer.ILBStrategy
 	strategyName string
 	logger       *slog.Logger
 	sync.RWMutex
@@ -68,7 +68,7 @@ func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if l.strategyName == strategy.LeastConnectionsStrategy {
+	if l.strategyName == balancer.LeastConnectionsStrategy {
 		srv.ConnCount.Add(1)
 		defer srv.ConnCount.Add(-1)
 	}
@@ -77,9 +77,7 @@ func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// look into other ways of forwarding request without this httputil.NewSingleHostReverseProxy
 	parsed, _ := url.Parse(srv.URL)
-
 	proxy := httputil.NewSingleHostReverseProxy(parsed)
-	proxy.Transport = defaultTransport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		l.logger.Error(BackendError, "server", srv.URL, "client_ip", r.UserAgent(), "error", err.Error())
 	}
@@ -96,13 +94,12 @@ func (l *loadBalancer) Next(w http.ResponseWriter, r *http.Request) *models.Serv
 }
 
 func New(cfg *config.Config, logger *slog.Logger) (*loadBalancer, error) {
-	lbStrategy, err := strategy.GetLBStrategy(cfg.Strategy, cfg.Servers)
+	lbStrategy, err := balancer.GetLBStrategy(cfg.Strategy, cfg.Servers)
 	if err != nil {
 		return nil, err
 	}
-
-	ch := NewHealthchecker(cfg.Servers, logger)
-	ch.Start(context.Background(), cfg.HealthCheckIntervalSeconds)
+	checker := NewHealthchecker(cfg.Servers, logger)
+	checker.Start(context.Background(), cfg.HealthCheckIntervalSeconds)
 
 	return &loadBalancer{
 		servers:      cfg.Servers,

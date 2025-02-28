@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Kostaaa1/loadbalancer/internal/config"
-	loadbalancer "github.com/Kostaaa1/loadbalancer/lb"
+	loadbalancer "github.com/Kostaaa1/loadbalancer/internal/server"
 )
 
 func main() {
@@ -25,7 +25,6 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", lb) // add rate limit
-	mux.HandleFunc("/lb-add-server", lb.AddServerHandler)
 
 	srv := http.Server{
 		Addr:         cfg.Port,
