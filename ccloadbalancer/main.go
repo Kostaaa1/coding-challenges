@@ -62,12 +62,12 @@ func (lb *LBServer) healthChecker() {
 	go func() {
 		for range lb.ticker.C {
 			var wg sync.WaitGroup
-			for i := range lb.backends {
+			for _, b := range lb.backends {
 				wg.Add(1)
 				go func(p *backend) {
 					defer wg.Done()
 					lb.sendHeathcheck(p)
-				}(lb.backends[i])
+				}(b)
 			}
 			wg.Wait()
 		}
@@ -118,7 +118,6 @@ func (lb *LBServer) handleConn(conn net.Conn) {
 		writeError(conn, http.StatusInternalServerError, "Failed to read backend response", err)
 		return
 	}
-	fmt.Println("RESPO:", string(body))
 
 	writeResponse(conn, resp, body)
 	log.Println("Request received from backend and response sent to client.")

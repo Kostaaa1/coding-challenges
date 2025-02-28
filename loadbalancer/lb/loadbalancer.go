@@ -37,17 +37,6 @@ var (
 	}
 )
 
-// type ILoadbalancer interface {
-// 	http.Handler
-// }
-
-type loadBalancer struct {
-	servers  []*models.Server
-	strategy strategy.ILBStrategy
-	logger   *slog.Logger
-	sync.RWMutex
-}
-
 type statusResponseWriter struct {
 	http.ResponseWriter
 	status int
@@ -56,6 +45,14 @@ type statusResponseWriter struct {
 func (w *statusResponseWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
+}
+
+type loadBalancer struct {
+	servers      []*models.Server
+	strategy     strategy.ILBStrategy
+	strategyName string
+	logger       *slog.Logger
+	sync.RWMutex
 }
 
 func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -71,17 +68,24 @@ func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if l.strategyName == strategy.LeastConnectionsStrategy {
+		srv.ConnCount.Add(1)
+		defer srv.ConnCount.Add(-1)
+	}
+
 	l.logger.Info(RequestForwarded, "server", srv.URL, "client_ip", r.RemoteAddr)
 
+	// look into other ways of forwarding request without this httputil.NewSingleHostReverseProxy
 	parsed, _ := url.Parse(srv.URL)
+
 	proxy := httputil.NewSingleHostReverseProxy(parsed)
 	proxy.Transport = defaultTransport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		l.logger.Error(BackendError, "server", srv.URL, "client_ip", r.UserAgent(), "error", err.Error())
 	}
-
 	statusRecorder := &statusResponseWriter{ResponseWriter: w}
 	proxy.ServeHTTP(statusRecorder, r)
+
 	l.logger.Info(RequestCompleted, "server", srv.URL, "status", statusRecorder.status, "latency_ms", time.Since(start).Milliseconds())
 }
 
@@ -89,6 +93,23 @@ func (l *loadBalancer) Next(w http.ResponseWriter, r *http.Request) *models.Serv
 	l.RLock()
 	defer l.RUnlock()
 	return l.strategy.Next(w, r)
+}
+
+func New(cfg *config.Config, logger *slog.Logger) (*loadBalancer, error) {
+	lbStrategy, err := strategy.GetLBStrategy(cfg.Strategy, cfg.Servers)
+	if err != nil {
+		return nil, err
+	}
+
+	ch := NewHealthchecker(cfg.Servers, logger)
+	ch.Start(context.Background(), cfg.HealthCheckIntervalSeconds)
+
+	return &loadBalancer{
+		servers:      cfg.Servers,
+		strategy:     lbStrategy,
+		strategyName: cfg.Strategy,
+		logger:       logger,
+	}, nil
 }
 
 func (l *loadBalancer) AddServer(srv *models.Server) {
@@ -105,18 +126,5 @@ func (l *loadBalancer) Remove(srv *models.Server) {
 			l.servers = append(l.servers[:i], l.servers[i+1:]...)
 			return
 		}
-	}
-}
-
-func New(cfg *config.Config, logger *slog.Logger) *loadBalancer {
-	lbStrategy := strategy.GetLBStrategy(cfg.Strategy, cfg.Servers)
-
-	ch := NewHealthchecker(cfg.Servers, logger)
-	ch.Start(context.Background(), cfg.HealthCheckIntervalSeconds)
-
-	return &loadBalancer{
-		servers:  cfg.Servers,
-		strategy: lbStrategy,
-		logger:   logger,
 	}
 }

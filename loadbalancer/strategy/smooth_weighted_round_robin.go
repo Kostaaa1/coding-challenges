@@ -2,53 +2,46 @@ package strategy
 
 import (
 	"net/http"
-	"sync"
+	"sync/atomic"
 
 	"github.com/Kostaaa1/loadbalancer/internal/models"
 )
 
 type SmoothWRR struct {
 	servers     []*models.Server
-	cw          []int
+	cw          []atomic.Int32
 	totalWeight int
-	sync.RWMutex
-}
-
-func max(nums []int) (int, int) {
-	i, max := 0, nums[0]
-	for id, n := range nums {
-		if n > max {
-			i, max = id, n
-		}
-	}
-	return i, max
 }
 
 func (s *SmoothWRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
-	s.Lock()
-	defer s.Unlock()
-
 	if len(s.servers) == 0 {
 		return nil
 	}
 
 	for i, srv := range s.servers {
-		s.cw[i] += srv.Weight
+		if srv.Healthy {
+			s.cw[i].Add(int32(srv.Weight))
+		}
 	}
 
-	maxId, _ := max(s.cw)
-	s.cw[maxId] -= s.totalWeight
+	maxIdx := 0
+	for i := range s.cw {
+		if s.cw[i].Load() > s.cw[maxIdx].Load() {
+			maxIdx = i
+		}
+	}
 
-	return s.servers[maxId]
+	s.cw[maxIdx].Add(-int32(s.totalWeight))
+	return s.servers[maxIdx]
 }
 
 func NewSmoothWRRStrategy(servers []*models.Server) ILBStrategy {
-	cw := make([]int, len(servers))
-
 	totalWeight := 0
 	for _, srv := range servers {
 		totalWeight += srv.Weight
 	}
+
+	cw := make([]atomic.Int32, len(servers))
 
 	return &SmoothWRR{
 		servers:     servers,

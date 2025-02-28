@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/Kostaaa1/loadbalancer/internal/models"
@@ -10,19 +11,27 @@ type ILBStrategy interface {
 	Next(w http.ResponseWriter, r *http.Request) *models.Server // it always needs to return healthy server or nil
 }
 
-func GetLBStrategy(strategy string, servers []*models.Server) ILBStrategy {
+var (
+	RoundRobinStrategy         = "round_robin"
+	WeightedRoundRobinStrategy = "weighted_round_robin"
+	SmoothWeightedRoundRobin   = "round_robin"
+	LeastConnectionsStrategy   = "leact_connections"
+	StickySessionStrategy      = "sticky_session"
+)
+
+func GetLBStrategy(strategy string, servers []*models.Server) (ILBStrategy, error) {
 	switch strategy {
-	case "round_robin":
-		return NewRoundRobinStrategy(servers)
-	case "sticky_session":
-		return NewStickySessionStrategy()
-	case "weighted_round_robin":
-		return NewWRRStrategy(servers)
-	case "smooth_weighted_round_robin":
-		return NewSmoothWRRStrategy(servers)
-	case "least_connections":
-		return NewLeastConnectionsStrategy(servers)
+	case RoundRobinStrategy:
+		return NewRoundRobinStrategy(servers), nil
+	case StickySessionStrategy:
+		return NewStickySessionStrategy(), nil
+	case WeightedRoundRobinStrategy:
+		return NewWRRStrategy(servers), nil
+	case SmoothWeightedRoundRobin:
+		return NewSmoothWRRStrategy(servers), nil
+	case LeastConnectionsStrategy:
+		return NewLeastConnectionsStrategy(servers), nil
 	default:
-		return NewRoundRobinStrategy(servers)
+		return nil, errors.New("provided strategy is not valid")
 	}
 }

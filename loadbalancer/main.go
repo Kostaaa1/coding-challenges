@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -18,13 +17,14 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println(cfg.Servers)
-
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	lb := loadbalancer.New(cfg, logger)
+	lb, err := loadbalancer.New(cfg, logger)
+	if err != nil {
+		panic(err)
+	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", lb)
+	mux.Handle("/", lb) // add rate limit
 	mux.HandleFunc("/lb-add-server", lb.AddServerHandler)
 
 	srv := http.Server{

@@ -2,37 +2,24 @@ package strategy
 
 import (
 	"net/http"
-	"sync"
+	"sync/atomic"
 
 	"github.com/Kostaaa1/loadbalancer/internal/models"
 )
 
-type RoundRobinStrategy struct {
-	index   int
+type RoundRobin struct {
+	index   atomic.Int32
 	servers []*models.Server
-	sync.RWMutex
 }
 
 func NewRoundRobinStrategy(servers []*models.Server) ILBStrategy {
-	return &RoundRobinStrategy{index: 0, servers: servers}
+	return &RoundRobin{servers: servers}
 }
 
-func (s *RoundRobinStrategy) Next(w http.ResponseWriter, r *http.Request) *models.Server {
-	s.Lock()
-	defer s.Unlock()
-
+func (s *RoundRobin) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	if len(s.servers) == 0 {
 		return nil
 	}
-
-	srv := s.servers[s.index]
-	s.index = (s.index + 1) % len(s.servers)
-	return srv
+	idx := int(s.index.Add(1)-1) % len(s.servers)
+	return s.servers[idx]
 }
-
-// func (s *RoundRobinStrategy) UpdateServers(servers []*models.Server) {
-// 	s.Lock()
-// 	defer s.Unlock()
-// 	s.servers = servers
-// 	s.index = 0
-// }
