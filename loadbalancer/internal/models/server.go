@@ -15,7 +15,7 @@ type Server struct {
 	Healthy   bool   `json:"healthy"`
 	Weight    int    `json:"weight"`
 	ConnCount atomic.Int32
-	sync.RWMutex
+	sync.Mutex
 }
 
 func (s *Server) UnmarshalJSON(data []byte) error {

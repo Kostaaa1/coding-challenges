@@ -14,7 +14,7 @@ type ILBStrategy interface {
 var (
 	RoundRobinStrategy         = "round_robin"
 	WeightedRoundRobinStrategy = "weighted_round_robin"
-	SmoothWeightedRoundRobin   = "round_robin"
+	SmoothWeightedRoundRobin   = "smooth_weighted_round_robin"
 	LeastConnectionsStrategy   = "leact_connections"
 	StickySessionStrategy      = "sticky_session"
 )

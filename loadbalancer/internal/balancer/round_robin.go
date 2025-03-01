@@ -11,16 +11,49 @@ type RoundRobin struct {
 	servers []*models.Server
 	index   int
 	sync.Mutex
-	// index   atomic.Int32
 }
 
-func NewRoundRobinStrategy(servers []*models.Server) *RoundRobin {
-	rr := &RoundRobin{
-		servers: servers,
+func (s *RoundRobin) Next(w http.ResponseWriter, r *http.Request) *models.Server {
+	if len(s.servers) == 0 {
+		return nil
 	}
-	// rr.index.Store(0)
-	return rr
+
+	s.Lock()
+	defer s.Unlock()
+
+	for i := 1; i < len(s.servers); i++ {
+		c := (s.index + i) % len(s.servers)
+		srv := s.servers[c]
+		if srv.Healthy {
+			s.index = c
+			return srv
+		}
+	}
+
+	return nil
 }
+
+func NewRoundRobinStrategy(servers []*models.Server) ILBStrategy {
+	return &RoundRobin{
+		servers: servers,
+		index:   -1,
+	}
+}
+
+// atomic - uneven distribution
+
+// type RoundRobin struct {
+// 	servers []*models.Server
+// 	index   atomic.Int32
+// }
+
+// func NewRoundRobinStrategy(servers []*models.Server) ILBStrategy {
+// 	rr := &RoundRobin{
+// 		servers: servers,
+// 	}
+// 	rr.index.Store(0)
+// 	return rr
+// }
 
 // func (s *RoundRobin) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 // 	if len(s.servers) == 0 {
@@ -36,43 +69,13 @@ func NewRoundRobinStrategy(servers []*models.Server) *RoundRobin {
 // 		}
 // 		iterator++
 
-// 		// Get the current index atomically
-// 		currentIndex := s.index.Load()
+// 		current := s.index.Load()
+// 		next := (current + 1) % serverCount
+// 		s.index.CompareAndSwap(current, next)
 
-// 		// Increment the index atomically and wrap around using modulo
-// 		// The CompareAndSwap ensures the operation is atomic even during concurrent access
-// 		nextIndex := (currentIndex + 1) % serverCount
-// 		s.index.CompareAndSwap(currentIndex, nextIndex)
-
-// 		// Get the server at the current index
-// 		srv := s.servers[currentIndex]
-
+// 		srv := s.servers[current]
 // 		if srv.Healthy {
 // 			return srv
 // 		}
 // 	}
 // }
-
-func (s *RoundRobin) Next(w http.ResponseWriter, r *http.Request) *models.Server {
-	if len(s.servers) == 0 {
-		return nil
-	}
-
-	s.Lock()
-	defer s.Unlock()
-
-	iterator := 0
-
-	for {
-		if iterator == len(s.servers) {
-			return nil
-		}
-		iterator++
-
-		srv := s.servers[s.index]
-		s.index = (s.index + 1) % len(s.servers)
-		if srv.Healthy {
-			return srv
-		}
-	}
-}

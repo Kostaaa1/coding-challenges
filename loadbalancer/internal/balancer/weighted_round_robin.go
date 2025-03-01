@@ -40,6 +40,7 @@ func (s *WRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 		}
 	}
 
+	// fallback
 	for _, srv := range s.servers {
 		if srv.Healthy {
 			return srv

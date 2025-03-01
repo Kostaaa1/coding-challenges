@@ -28,12 +28,16 @@ var (
 	NoHealthyBackend    = "NO_HEALTHY_BACKEND"
 	BackendError        = "BACKEND_ERROR"
 
+	ServerShutdown = "SERVER_SHUTDOWN"
+	ServerStopper  = "SERVER_STOPPED"
+
 	defaultTransport = &http.Transport{
-		MaxIdleConns:          100,
+		MaxIdleConns:          1000,
 		MaxIdleConnsPerHost:   10,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		DisableCompression:    true,
 	}
 )
 
@@ -49,8 +53,9 @@ func (w *statusResponseWriter) WriteHeader(code int) {
 
 type loadBalancer struct {
 	servers      []*models.Server
-	strategy     balancer.ILBStrategy
+	proxies      map[string]*httputil.ReverseProxy
 	strategyName string
+	strategy     balancer.ILBStrategy
 	logger       *slog.Logger
 	sync.RWMutex
 }
@@ -61,6 +66,7 @@ func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	l.logger.Info(RequestReceived, "method", r.Method, "url", r.URL.String(), "client_ip", r.RemoteAddr)
 
 	srv := l.Next(w, r)
+
 	if srv == nil {
 		l.logger.Warn(NoBackendAvailable, "url", r.URL.String())
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -75,16 +81,11 @@ func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	l.logger.Info(RequestForwarded, "server", srv.URL, "client_ip", r.RemoteAddr)
 
-	// look into other ways of forwarding request without this httputil.NewSingleHostReverseProxy
-	parsed, _ := url.Parse(srv.URL)
-	proxy := httputil.NewSingleHostReverseProxy(parsed)
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		l.logger.Error(BackendError, "server", srv.URL, "client_ip", r.UserAgent(), "error", err.Error())
-	}
 	statusRecorder := &statusResponseWriter{ResponseWriter: w}
+	proxy := l.proxies[srv.URL]
 	proxy.ServeHTTP(statusRecorder, r)
 
-	l.logger.Info(RequestCompleted, "server", srv.URL, "status", statusRecorder.status, "latency_ms", time.Since(start).Milliseconds())
+	l.logger.Info(RequestCompleted, "server", srv.Name, "server_url", srv.URL, "status", statusRecorder.status, "latency_ms", time.Since(start).Milliseconds())
 }
 
 func (l *loadBalancer) Next(w http.ResponseWriter, r *http.Request) *models.Server {
@@ -101,27 +102,44 @@ func New(cfg *config.Config, logger *slog.Logger) (*loadBalancer, error) {
 	checker := NewHealthchecker(cfg.Servers, logger)
 	checker.Start(context.Background(), cfg.HealthCheckIntervalSeconds)
 
+	proxies := make(map[string]*httputil.ReverseProxy, len(cfg.Servers))
+
+	for _, srv := range cfg.Servers {
+		parsed, _ := url.Parse(srv.URL)
+		proxy := httputil.NewSingleHostReverseProxy(parsed)
+		proxy.Transport = defaultTransport
+		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			logger.Error(BackendError, "server_url", srv.URL, "client_ip", r.UserAgent())
+			srv.Healthy = false
+		}
+		proxies[srv.URL] = proxy
+	}
+
+	// return lb, nil
 	return &loadBalancer{
 		servers:      cfg.Servers,
 		strategy:     lbStrategy,
 		strategyName: cfg.Strategy,
 		logger:       logger,
+		proxies:      proxies,
 	}, nil
 }
 
-func (l *loadBalancer) AddServer(srv *models.Server) {
-	l.Lock()
-	defer l.Unlock()
-	l.servers = append(l.servers, srv)
-}
+////
 
-func (l *loadBalancer) Remove(srv *models.Server) {
-	l.Lock()
-	defer l.Unlock()
-	for i, server := range l.servers {
-		if server.Name == srv.Name {
-			l.servers = append(l.servers[:i], l.servers[i+1:]...)
-			return
-		}
-	}
-}
+// func (l *loadBalancer) AddServer(srv *models.Server) {
+// 	l.Lock()
+// 	defer l.Unlock()
+// 	l.servers = append(l.servers, srv)
+// }
+
+// func (l *loadBalancer) Remove(srv *models.Server) {
+// 	l.Lock()
+// 	defer l.Unlock()
+// 	for i, server := range l.servers {
+// 		if server.Name == srv.Name {
+// 			l.servers = append(l.servers[:i], l.servers[i+1:]...)
+// 			return
+// 		}
+// 	}
+// }

@@ -8,17 +8,11 @@ import (
 )
 
 type SmoothWRR struct {
-	servers        []*models.Server
-	cw             []int
-	totalWeight    int
-	selections     int
-	resetThreshold int
+	servers     []*models.Server
+	cw          []int
+	totalWeight int
 	sync.Mutex
 }
-
-var (
-	defaultThreshold = 50
-)
 
 func (s *SmoothWRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	s.Lock()
@@ -26,12 +20,6 @@ func (s *SmoothWRR) Next(w http.ResponseWriter, r *http.Request) *models.Server 
 
 	if len(s.servers) == 0 {
 		return nil
-	}
-
-	s.selections++
-	if s.selections >= s.resetThreshold {
-		s.selections = 0
-		s.resetThreshold = len(s.servers) * defaultThreshold
 	}
 
 	var selectedSrv *models.Server
@@ -65,11 +53,9 @@ func NewSmoothWRRStrategy(servers []*models.Server) ILBStrategy {
 	for _, srv := range servers {
 		total += srv.Weight
 	}
-
 	return &SmoothWRR{
-		servers:        servers,
-		totalWeight:    total,
-		cw:             make([]int, len(servers)),
-		resetThreshold: len(servers) * defaultThreshold,
+		servers:     servers,
+		totalWeight: total,
+		cw:          make([]int, len(servers)),
 	}
 }
