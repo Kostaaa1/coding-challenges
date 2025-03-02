@@ -13,6 +13,12 @@ type RoundRobin struct {
 	sync.Mutex
 }
 
+func (s *RoundRobin) UpdateServers(servers []*models.Server) {
+	s.Lock()
+	defer s.Unlock()
+	s.servers = servers
+}
+
 func (s *RoundRobin) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	if len(s.servers) == 0 {
 		return nil
@@ -41,12 +47,10 @@ func NewRoundRobinStrategy(servers []*models.Server) ILBStrategy {
 }
 
 // atomic - uneven distribution
-
 // type RoundRobin struct {
 // 	servers []*models.Server
 // 	index   atomic.Int32
 // }
-
 // func NewRoundRobinStrategy(servers []*models.Server) ILBStrategy {
 // 	rr := &RoundRobin{
 // 		servers: servers,
@@ -54,25 +58,20 @@ func NewRoundRobinStrategy(servers []*models.Server) ILBStrategy {
 // 	rr.index.Store(0)
 // 	return rr
 // }
-
 // func (s *RoundRobin) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 // 	if len(s.servers) == 0 {
 // 		return nil
 // 	}
-
 // 	serverCount := int32(len(s.servers))
 // 	iterator := int32(0)
-
 // 	for {
 // 		if iterator >= serverCount {
 // 			return nil
 // 		}
 // 		iterator++
-
 // 		current := s.index.Load()
 // 		next := (current + 1) % serverCount
 // 		s.index.CompareAndSwap(current, next)
-
 // 		srv := s.servers[current]
 // 		if srv.Healthy {
 // 			return srv

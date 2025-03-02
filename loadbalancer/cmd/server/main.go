@@ -57,7 +57,7 @@ func main() {
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		tmpl, err := template.ParseFiles(filepath.Join("internal", "server", "templates", "index.html"))
+		tmpl, err := template.ParseFiles(filepath.Join("cmd", "server", "templates", "index.html"))
 		if err != nil {
 			fmt.Println(err)
 			http.Error(w, "error loading template", http.StatusInternalServerError)

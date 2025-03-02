@@ -2,11 +2,17 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"os"
 	"path"
 	"strings"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/Kostaaa1/loadbalancer/internal/models"
+	"github.com/fsnotify/fsnotify"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,6 +31,7 @@ type Config struct {
 	TLSEnabled                 bool             `json:"tls_enabled" yaml:"tls_enabled"`
 	TLSCertPath                string           `json:"tls_cert_path" yaml:"tls_cert_path"`
 	TLSKeyPath                 string           `json:"tls_key_path" yaml:"tls_key_path"`
+	configPath                 string
 }
 
 func Load(p string) (*Config, error) {
@@ -57,5 +64,78 @@ func Load(p string) (*Config, error) {
 		cfg.HealthCheckIntervalSeconds = defaultHealthCheckInterval
 	}
 
+	cfg.configPath = p
 	return &cfg, err
+}
+
+func (cfg *Config) Watch(done chan error) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer watcher.Close()
+
+	var timer *time.Timer
+	duration := 150 * time.Millisecond
+
+	cooldownDur := 2 * time.Second
+	var mu sync.Mutex
+	var blocked bool
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+
+				mu.Lock()
+				if blocked {
+					mu.Unlock()
+					continue
+				}
+
+				if timer != nil {
+					timer.Stop()
+				}
+
+				timer = time.AfterFunc(duration, func() {
+					mu.Lock()
+					blocked = true
+					mu.Unlock()
+
+					if event.Has(fsnotify.Write) {
+						fmt.Println("Write event notice")
+						p, err := os.FindProcess(os.Getpid())
+						if err == nil {
+							p.Signal(syscall.SIGHUP)
+						}
+					}
+
+					time.AfterFunc(cooldownDur, func() {
+						mu.Lock()
+						blocked = false
+						mu.Unlock()
+					})
+				})
+				mu.Unlock()
+
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				fmt.Println("File watch error:", err)
+			}
+		}
+	}()
+
+	if err := watcher.Add(cfg.configPath); err != nil {
+		log.Fatal("error while adding config path:", cfg.configPath, "Error:", err)
+	}
+
+	<-done
 }

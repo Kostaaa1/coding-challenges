@@ -14,6 +14,12 @@ type SmoothWRR struct {
 	sync.Mutex
 }
 
+func (s *SmoothWRR) UpdateServers(servers []*models.Server) {
+	s.Lock()
+	defer s.Unlock()
+	s.servers = servers
+}
+
 func (s *SmoothWRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	s.Lock()
 	defer s.Unlock()

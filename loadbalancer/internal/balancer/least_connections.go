@@ -12,10 +12,19 @@ type LeastConnections struct {
 	sync.RWMutex
 }
 
+func (s *LeastConnections) UpdateServers(servers []*models.Server) {
+	s.Lock()
+	defer s.Unlock()
+	s.servers = servers
+}
+
 func (s *LeastConnections) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	if len(s.servers) == 0 {
 		return nil
 	}
+
+	s.Lock()
+	defer s.Unlock()
 
 	minIdx := -1
 	minConn := int32(^uint32(0) >> 1)

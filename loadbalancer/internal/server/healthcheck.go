@@ -37,6 +37,12 @@ func NewHealthchecker(servers []*models.Server, logger *slog.Logger) *Checker {
 	}
 }
 
+func (h *Checker) UpdateServers(servers []*models.Server) {
+	h.Lock()
+	defer h.Unlock()
+	h.servers = servers
+}
+
 func (h *Checker) Start(ctx context.Context, interval int) {
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(interval))

@@ -15,6 +15,12 @@ type WRR struct {
 	sync.RWMutex
 }
 
+func (s *WRR) UpdateServers(servers []*models.Server) {
+	s.Lock()
+	defer s.Unlock()
+	s.servers = servers
+}
+
 func (s *WRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	s.Lock()
 	defer s.Unlock()

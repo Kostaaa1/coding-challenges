@@ -28,8 +28,7 @@ var (
 	NoHealthyBackend    = "NO_HEALTHY_BACKEND"
 	BackendError        = "BACKEND_ERROR"
 
-	ServerShutdown = "SERVER_SHUTDOWN"
-	ServerStopper  = "SERVER_STOPPED"
+	ConfigReload = "CONFIG_RELOAD"
 
 	defaultTransport = &http.Transport{
 		MaxIdleConns:          1000,
@@ -51,16 +50,17 @@ func (w *statusResponseWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
-type loadBalancer struct {
-	servers      []*models.Server
-	proxies      map[string]*httputil.ReverseProxy
-	strategyName string
-	strategy     balancer.ILBStrategy
-	logger       *slog.Logger
-	sync.RWMutex
+type LB struct {
+	servers  []*models.Server
+	proxies  map[string]*httputil.ReverseProxy
+	strategy balancer.ILBStrategy
+	checker  *Checker
+	cfg      *config.Config
+	logger   *slog.Logger
+	sync.Mutex
 }
 
-func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (l *LB) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	l.logger.Info(RequestReceived, "method", r.Method, "url", r.URL.String(), "client_ip", r.RemoteAddr)
@@ -74,7 +74,7 @@ func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if l.strategyName == balancer.LeastConnectionsStrategy {
+	if l.cfg.Strategy == balancer.LeastConnectionsStrategy {
 		srv.ConnCount.Add(1)
 		defer srv.ConnCount.Add(-1)
 	}
@@ -88,58 +88,73 @@ func (l *loadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	l.logger.Info(RequestCompleted, "server", srv.Name, "server_url", srv.URL, "status", statusRecorder.status, "latency_ms", time.Since(start).Milliseconds())
 }
 
-func (l *loadBalancer) Next(w http.ResponseWriter, r *http.Request) *models.Server {
-	l.RLock()
-	defer l.RUnlock()
+func (l *LB) Next(w http.ResponseWriter, r *http.Request) *models.Server {
+	l.Lock()
+	defer l.Unlock()
 	return l.strategy.Next(w, r)
 }
 
-func New(cfg *config.Config, logger *slog.Logger) (*loadBalancer, error) {
+func (l *LB) SetConfig(cfg *config.Config) error {
+	l.Lock()
+	defer l.Unlock()
+
+	l.cfg = cfg
+	lbStrategy, err := balancer.GetLBStrategy(cfg.Strategy, cfg.Servers)
+	if err != nil {
+		return err
+	}
+	l.strategy = lbStrategy
+	l.strategy.UpdateServers(cfg.Servers)
+	l.checker.UpdateServers(cfg.Servers)
+
+	proxies := make(map[string]*httputil.ReverseProxy, len(cfg.Servers))
+	for _, srv := range cfg.Servers {
+		l.addProxy(proxies, srv)
+	}
+	l.proxies = proxies
+
+	return nil
+}
+
+func (l *LB) addProxy(proxies map[string]*httputil.ReverseProxy, srv *models.Server) {
+	parsed, _ := url.Parse(srv.URL)
+	proxy := httputil.NewSingleHostReverseProxy(parsed)
+	proxy.Transport = defaultTransport
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		l.logger.Error(BackendError, "server_url", srv.URL, "client_ip", r.UserAgent())
+		srv.Healthy = false
+	}
+	proxies[srv.URL] = proxy
+}
+
+func (l *LB) SetLogger(logger *slog.Logger) {
+	l.Lock()
+	defer l.Unlock()
+	l.logger = logger
+}
+
+func New(cfg *config.Config, logger *slog.Logger) (*LB, error) {
 	lbStrategy, err := balancer.GetLBStrategy(cfg.Strategy, cfg.Servers)
 	if err != nil {
 		return nil, err
 	}
+
 	checker := NewHealthchecker(cfg.Servers, logger)
 	checker.Start(context.Background(), cfg.HealthCheckIntervalSeconds)
 
 	proxies := make(map[string]*httputil.ReverseProxy, len(cfg.Servers))
 
-	for _, srv := range cfg.Servers {
-		parsed, _ := url.Parse(srv.URL)
-		proxy := httputil.NewSingleHostReverseProxy(parsed)
-		proxy.Transport = defaultTransport
-		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-			logger.Error(BackendError, "server_url", srv.URL, "client_ip", r.UserAgent())
-			srv.Healthy = false
-		}
-		proxies[srv.URL] = proxy
+	lb := &LB{
+		cfg:      cfg,
+		strategy: lbStrategy,
+		checker:  checker,
+		logger:   logger,
+		proxies:  proxies,
 	}
 
-	// return lb, nil
-	return &loadBalancer{
-		servers:      cfg.Servers,
-		strategy:     lbStrategy,
-		strategyName: cfg.Strategy,
-		logger:       logger,
-		proxies:      proxies,
-	}, nil
+	for _, srv := range cfg.Servers {
+		lb.addProxy(lb.proxies, srv)
+	}
+
+	return lb, nil
 }
-
-////
-
-// func (l *loadBalancer) AddServer(srv *models.Server) {
-// 	l.Lock()
-// 	defer l.Unlock()
-// 	l.servers = append(l.servers, srv)
-// }
-
-// func (l *loadBalancer) Remove(srv *models.Server) {
-// 	l.Lock()
-// 	defer l.Unlock()
-// 	for i, server := range l.servers {
-// 		if server.Name == srv.Name {
-// 			l.servers = append(l.servers[:i], l.servers[i+1:]...)
-// 			return
-// 		}
-// 	}
-// }

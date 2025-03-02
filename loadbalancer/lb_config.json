@@ -1,6 +1,6 @@
 {
   "$schema": "lb_config.schema.json",
-  "port": "4000",
+  "port": "8080",
   "strategy": "smooth_weighted_round_robin",
   "health_check_interval_seconds": 5,
   "rate_limiter_enabled": true,
@@ -9,19 +9,19 @@
   "servers": [
     {
       "name": "server1",
-      "url": "http://localhost:8080",
+      "url": "http://172.27.179.12:8081",
       "health_url": "/health",
       "weight": 1
     },
     {
       "name": "server2",
-      "url": "http://localhost:8070",
+      "url": "http://172.27.179.12:8082",
       "health_url": "/health",
       "weight": 2
     },
     {
       "name": "server3",
-      "url": "http://localhost:8060",
+      "url": "http://172.27.179.12:8083",
       "health_url": "/health",
       "weight": 5
     }
