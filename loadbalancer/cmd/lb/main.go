@@ -17,7 +17,7 @@ import (
 	loadbalancer "github.com/Kostaaa1/loadbalancer/internal/server"
 )
 
-func signalListener(srv *http.Server, lb *loadbalancer.LB, logger *slog.Logger, cfgPath string, done chan error) {
+func signalListener(srv *http.Server, lb *loadbalancer.LB, logger *slog.Logger, cfgPath string, cancel context.CancelFunc) {
 	// Capture SIGHUP (reload config signal) / SIGTERM and SIGINT for graceful shutdown
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT)
@@ -31,18 +31,21 @@ func signalListener(srv *http.Server, lb *loadbalancer.LB, logger *slog.Logger, 
 		case syscall.SIGINT, syscall.SIGTERM:
 			shutdownOnce.Do(func() {
 				logger.Info("Gracefully shutting down...")
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				done <- srv.Shutdown(ctx)
-				close(done)
-				close(sigs)
+				cancel()
+
+				ctx, cancelTimeout := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancelTimeout()
+
+				if err := srv.Shutdown(ctx); err != nil {
+					logger.Error("Error shutting down server", "error", err)
+				}
 			})
 			return
 		case syscall.SIGHUP:
 			logger.Info(loadbalancer.ConfigReload, "msg", "Received SIGHUP signal, reloading config...")
 			newCfg, err := config.Load(cfgPath)
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 			lb.SetConfig(newCfg)
 		}
@@ -56,50 +59,31 @@ func main() {
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	lb, err := loadbalancer.New(cfg, logger)
+	lb, err := loadbalancer.New(cfg, logger, ctx)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", lb) // TODO: add rate limit
-
-	// cert, err := tls.LoadX509KeyPair("./cert/server.crt", "./cert/server.key")
-	// if err != nil {
-	// 	log.Fatalf("Failed to load certificates: %v", err)
-	// }
-	// var ticket [32]byte
-	// rand.Read(ticket[:])
-	// tlsConfig := &tls.Config{
-	// 	Certificates: []tls.Certificate{cert},
-	// 	MinVersion:   tls.VersionTLS12,
-	// 	GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
-	// 		return &tls.Config{
-	// 			SessionTicketsDisabled: false,
-	// 			SessionTicketKey:       ticket,
-	// 		}, nil
-	// 	},
-	// }
+	mux.Handle("/", lb) /* TODO: add rate limit */
 
 	srv := &http.Server{
-		Addr:         ":443",
+		Addr:         cfg.Port,
 		Handler:      mux,
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
-		// TLSConfig:    tlsConfig,
 	}
 
-	done := make(chan error, 1)
-
-	go signalListener(srv, lb, logger, *cfgPath, done)
+	go signalListener(srv, lb, logger, *cfgPath, cancel)
 	if *watchConfig {
-		go cfg.Watch(done)
+		go cfg.Watch(ctx)
 	}
 
 	logger.Info(loadbalancer.LoadbalancerStarted, "port", srv.Addr, "strategy", cfg.Strategy, "healtcheck_interval", cfg.HealthCheckIntervalSeconds)
@@ -109,8 +93,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = <-done
-	if err != nil {
-		log.Fatal(err)
-	}
+	<-ctx.Done()
+	logger.Info("Shutdown complete")
 }

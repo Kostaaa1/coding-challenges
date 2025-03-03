@@ -1,32 +1,92 @@
 {
-  "$schema": "lb_config.schema.json",
   "port": "8080",
-  "strategy": "weighted_round_robin",
+  "strategy": "smooth_weighted_round_robin",
   "health_check_interval_seconds": 5,
-  "rate_limiter_enabled": true,
-  "rate_limit_tokens": 10,
-  "rate_limit_interval_seconds": 1,
+  "rate_limit": {
+    "rate_limiter_enabled": true,
+    "rate_limit_tokens": 10,
+    "rate_limit_interval_seconds": 1
+  },
   "servers": [
     {
       "name": "server1",
-      "url": "http://172.21.205.176:8081",
+      "url": "http://localhost:8081",
       "health_url": "/health",
       "weight": 1
     },
     {
       "name": "server2",
-      "url": "http://172.21.205.176:8082",
+      "url": "http://localhost:8082",
       "health_url": "/health",
       "weight": 3
     },
     {
       "name": "server3",
-      "url": "http://172.21.205.176:8083",
+      "url": "http://localhost:8083",
       "health_url": "/health",
       "weight": 5
     }
   ],
-  "tls_enabled": true,
-  "tls_cert_file": "/path/to/cert.pem",
-  "tls_key_file": "/path/to/key.pem"
+  "tls": {
+    "tls_enabled": true,
+    "tls_cert_file": "/path/to/cert.pem",
+    "tls_key_file": "/path/to/key.pem"
+  },
+  "routing": {
+    "enabled": false,
+    "default_server": "fallback-server",
+    "rules": [
+      {
+        "conditions": [
+          {
+            "path_prefix": "/api/v2/products",
+            "method": "GET",
+            "headers": {
+              "User-Agent": "MobileApp"
+            }
+          }
+        ],
+        "action": {
+          "route_to": "mobile-server"
+        }
+      },
+      {
+        "conditions": [
+          {
+            "path_prefix": "/api/v2/orders",
+            "headers": {
+              "Authorization": "Bearer <some-api-key>"
+            }
+          }
+        ],
+        "action": {
+          "route_to": "priority-server"
+        }
+      },
+      {
+        "conditions": [
+          {
+            "path_prefix": "/api/v2/admin",
+            "method": "POST",
+            "headers": {
+              "X-Admin": "true"
+            }
+          }
+        ],
+        "action": {
+          "route_to": "server2"
+        }
+      },
+      {
+        "conditions": [
+          {
+            "path_prefix": "/public"
+          }
+        ],
+        "action": {
+          "route_to": "public-server"
+        }
+      }
+    ]
+  }
 }

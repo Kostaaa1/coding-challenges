@@ -46,7 +46,7 @@ func (h *Checker) UpdateServers(servers []*models.Server) {
 	h.RUnlock()
 }
 
-func (h *Checker) Start(ctx context.Context, interval int) {
+func (h *Checker) Start(interval int, ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(interval))
 		defer ticker.Stop()
@@ -57,8 +57,9 @@ func (h *Checker) Start(ctx context.Context, interval int) {
 			select {
 			case <-ticker.C:
 				h.run()
+
 			case <-ctx.Done():
-				fmt.Println("Health check stopped")
+				h.logger.Info("Health check stopped")
 				return
 			}
 		}

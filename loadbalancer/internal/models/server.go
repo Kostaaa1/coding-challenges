@@ -1,11 +1,8 @@
 package models
 
 import (
-	"encoding/json"
 	"sync"
 	"sync/atomic"
-
-	"gopkg.in/yaml.v3"
 )
 
 type Server struct {
@@ -30,56 +27,49 @@ func (srv *Server) SetHealthy(status bool) {
 	srv.healthy = status
 }
 
-func (s *Server) UnmarshalJSON(data []byte) error {
-	aux := &struct {
-		Name      string `json:"name"`
-		URL       string `json:"url"`
-		HealthURL string `json:"health_url"`
-		Healthy   *bool  `json:"healthy"`
-		Weight    int    `json:"weight"`
-	}{}
+// func (s *Server) UnmarshalJSON(data []byte) error {
+// 	aux := &struct {
+// 		Name      string `json:"name"`
+// 		URL       string `json:"url"`
+// 		HealthURL string `json:"health_url"`
+// 		Healthy   *bool  `json:"healthy"`
+// 		Weight    int    `json:"weight"`
+// 	}{}
+// 	if err := json.Unmarshal(data, &aux); err != nil {
+// 		return err
+// 	}
+// 	s.Name = aux.Name
+// 	s.URL = aux.URL
+// 	s.HealthURL = aux.HealthURL
+// 	s.Weight = aux.Weight
+// 	if aux.Healthy == nil {
+// 		s.SetHealthy(false)
+// 	} else {
+// 		s.SetHealthy(*aux.Healthy)
+// 	}
+// 	return nil
+// }
 
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
+// func (s *Server) UnmarshalYAML(data []byte) error {
+// 	aux := &struct {
+// 		Name      string `yaml:"name"`
+// 		URL       string `yaml:"url"`
+// 		HealthURL string `yaml:"health_url"`
+// 		Healthy   *bool  `yaml:"Healthy"`
+// 		Weight    int    `yaml:"weight"`
+// 	}{}
+// 	if err := yaml.Unmarshal(data, &aux); err != nil {
+// 		return err
+// 	}
 
-	s.Name = aux.Name
-	s.URL = aux.URL
-	s.HealthURL = aux.HealthURL
-	s.Weight = aux.Weight
-
-	if aux.Healthy == nil {
-		s.SetHealthy(false)
-	} else {
-		s.SetHealthy(*aux.Healthy)
-	}
-
-	return nil
-}
-
-func (s *Server) UnmarshalYAML(data []byte) error {
-	aux := &struct {
-		Name      string `yaml:"name"`
-		URL       string `yaml:"url"`
-		HealthURL string `yaml:"health_url"`
-		Healthy   *bool  `yaml:"Healthy"`
-		Weight    int    `yaml:"weight"`
-	}{}
-
-	if err := yaml.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	s.Name = aux.Name
-	s.URL = aux.URL
-	s.HealthURL = aux.HealthURL
-	s.Weight = aux.Weight
-
-	if aux.Healthy == nil {
-		s.SetHealthy(false)
-	} else {
-		s.SetHealthy(*aux.Healthy)
-	}
-
-	return nil
-}
+// 	s.Name = aux.Name
+// 	s.URL = aux.URL
+// 	s.HealthURL = aux.HealthURL
+// 	s.Weight = aux.Weight
+// 	if aux.Healthy == nil {
+// 		s.SetHealthy(false)
+// 	} else {
+// 		s.SetHealthy(*aux.Healthy)
+// 	}
+// 	return nil
+// }

@@ -49,7 +49,6 @@ func (w *statusResponseWriter) WriteHeader(code int) {
 }
 
 type LB struct {
-	servers  []*models.Server
 	proxies  map[string]*httputil.ReverseProxy
 	strategy balancer.ILBStrategy
 	checker  *Checker
@@ -131,15 +130,14 @@ func (l *LB) SetLogger(logger *slog.Logger) {
 	l.logger = logger
 }
 
-func New(cfg *config.Config, logger *slog.Logger) (*LB, error) {
+func New(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*LB, error) {
 	lbStrategy, err := balancer.GetLBStrategy(cfg.Strategy, cfg.Servers)
 	if err != nil {
 		return nil, err
 	}
 
 	checker := NewHealthchecker(cfg.Servers, logger)
-	checker.Start(context.Background(), cfg.HealthCheckIntervalSeconds)
-
+	checker.Start(cfg.HealthCheckIntervalSeconds, ctx)
 	proxies := make(map[string]*httputil.ReverseProxy, len(cfg.Servers))
 
 	lb := &LB{

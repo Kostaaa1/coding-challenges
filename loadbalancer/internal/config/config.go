@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -21,17 +22,27 @@ const (
 )
 
 type Config struct {
-	Port                       string           `json:"port" yaml:"port"`
-	Strategy                   string           `json:"strategy" yaml:"strategy"`
-	Servers                    []*models.Server `json:"servers" yaml:"servers"`
-	HealthCheckIntervalSeconds int              `json:"health_check_interval_seconds" yaml:"health_check_interval_seconds"`
-	RateLimiterEnabled         bool             `json:"rate_limiter_enabled" yaml:"rate_limiter_enabled"`
-	RateLimitTokens            int              `json:"rate_limit_tokens" yaml:"rate_limit_tokens"`
-	RateLimitIntervalSeconds   int              `json:"rate_limit_interval_seconds" yaml:"rate_limit_interval_seconds"`
-	TLSEnabled                 bool             `json:"tls_enabled" yaml:"tls_enabled"`
-	TLSCertPath                string           `json:"tls_cert_path" yaml:"tls_cert_path"`
-	TLSKeyPath                 string           `json:"tls_key_path" yaml:"tls_key_path"`
-	configPath                 string
+	Port                       string `json:"port" yaml:"port"`
+	Strategy                   string `json:"strategy" yaml:"strategy"`
+	HealthCheckIntervalSeconds int    `json:"health_check_interval_seconds" yaml:"health_check_interval_seconds"`
+
+	RateLimit struct {
+		RateLimiterEnabled       bool `json:"rate_limiter_enabled" yaml:"rate_limiter_enabled"`
+		RateLimitTokens          int  `json:"rate_limit_tokens" yaml:"rate_limit_tokens"`
+		RateLimitIntervalSeconds int  `json:"rate_limit_interval_seconds" yaml:"rate_limit_interval_seconds"`
+	} `json:"rate_limit" yaml:"rate_limit"`
+
+	Servers []*models.Server `json:"servers" yaml:"servers"`
+
+	TLS struct {
+		Enabled  bool   `json:"tls_enabled" yaml:"tls_enabled"`
+		CertPath string `json:"tls_cert_file" yaml:"tls_cert_file"`
+		KeyPath  string `json:"tls_key_file" yaml:"tls_key_file"`
+	} `json:"tls" yaml:"tls"`
+
+	Routing models.Routing `json:"routing" yaml:"routing"`
+
+	configPath string `json:"-" yaml:"-"`
 }
 
 func Load(p string) (*Config, error) {
@@ -68,7 +79,7 @@ func Load(p string) (*Config, error) {
 	return &cfg, err
 }
 
-func (cfg *Config) Watch(done chan error) {
+func (cfg *Config) Watch(ctx context.Context) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -85,7 +96,7 @@ func (cfg *Config) Watch(done chan error) {
 	go func() {
 		for {
 			select {
-			case <-done:
+			case <-ctx.Done():
 				return
 
 			case event, ok := <-watcher.Events:
@@ -136,5 +147,5 @@ func (cfg *Config) Watch(done chan error) {
 		log.Fatal("error while adding config path:", cfg.configPath, "Error:", err)
 	}
 
-	<-done
+	<-ctx.Done()
 }
