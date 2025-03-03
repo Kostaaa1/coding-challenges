@@ -43,11 +43,7 @@ func (s *StickySession) serverFromSession(sessionID string) *models.Server {
 	})
 
 	for _, srv := range s.servers {
-		srv.Lock()
-		healthy := srv.Healthy
-		srv.Unlock()
-
-		if healthy {
+		if srv.IsHealthy() {
 			sessionMap[sessionID] = srv
 			return srv
 		}

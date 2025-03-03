@@ -30,7 +30,7 @@ func (s *RoundRobin) Next(w http.ResponseWriter, r *http.Request) *models.Server
 	for i := 1; i < len(s.servers); i++ {
 		c := (s.index + i) % len(s.servers)
 		srv := s.servers[c]
-		if srv.Healthy {
+		if srv.IsHealthy() {
 			s.index = c
 			return srv
 		}

@@ -12,10 +12,22 @@ type Server struct {
 	Name      string `json:"name" yaml:"name"`
 	URL       string `json:"url" yaml:"url"`
 	HealthURL string `json:"health_url" yaml:"health_url"`
-	Healthy   bool   `json:"healthy"`
 	Weight    int    `json:"weight"`
+	healthy   bool
 	ConnCount atomic.Int32
 	sync.Mutex
+}
+
+func (srv *Server) IsHealthy() bool {
+	srv.Lock()
+	defer srv.Unlock()
+	return srv.healthy
+}
+
+func (srv *Server) SetHealthy(status bool) {
+	srv.Lock()
+	defer srv.Unlock()
+	srv.healthy = status
 }
 
 func (s *Server) UnmarshalJSON(data []byte) error {
@@ -37,9 +49,9 @@ func (s *Server) UnmarshalJSON(data []byte) error {
 	s.Weight = aux.Weight
 
 	if aux.Healthy == nil {
-		s.Healthy = true
+		s.SetHealthy(false)
 	} else {
-		s.Healthy = *aux.Healthy
+		s.SetHealthy(*aux.Healthy)
 	}
 
 	return nil
@@ -64,9 +76,9 @@ func (s *Server) UnmarshalYAML(data []byte) error {
 	s.Weight = aux.Weight
 
 	if aux.Healthy == nil {
-		s.Healthy = true
+		s.SetHealthy(false)
 	} else {
-		s.Healthy = *aux.Healthy
+		s.SetHealthy(*aux.Healthy)
 	}
 
 	return nil

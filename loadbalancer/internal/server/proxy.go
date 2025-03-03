@@ -15,20 +15,18 @@ import (
 )
 
 var (
-	RequestForwarded = "REQUEST_FORWARDED"
-	RequestFailed    = "REQUEST_FAILED"
-	RequestRetry     = "REQUEST_RETRY"
-	RequestReceived  = "REQUEST_RECEIVED"
-	RequestCompleted = "REQUEST_COMPLETED"
-
+	RequestForwarded    = "REQUEST_FORWARDED"
+	RequestFailed       = "REQUEST_FAILED"
+	RequestRetry        = "REQUEST_RETRY"
+	RequestReceived     = "REQUEST_RECEIVED"
+	RequestCompleted    = "REQUEST_COMPLETED"
 	LoadbalancerStarted = "LOADBALANCER_STARTED"
 	MarkedHealthy       = "SERVER_MARKED_HEALTHY"
 	MarkedUnhealthy     = "SERVER_MARKED_UNHEALTHY"
 	NoBackendAvailable  = "NO_BACKEND_AVAILABLE"
 	NoHealthyBackend    = "NO_HEALTHY_BACKEND"
 	BackendError        = "BACKEND_ERROR"
-
-	ConfigReload = "CONFIG_RELOAD"
+	ConfigReload        = "CONFIG_RELOAD"
 
 	defaultTransport = &http.Transport{
 		MaxIdleConns:          1000,
@@ -121,8 +119,8 @@ func (l *LB) addProxy(proxies map[string]*httputil.ReverseProxy, srv *models.Ser
 	proxy := httputil.NewSingleHostReverseProxy(parsed)
 	proxy.Transport = defaultTransport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		l.logger.Error(BackendError, "server_url", srv.URL, "client_ip", r.UserAgent())
-		srv.Healthy = false
+		l.logger.Error(BackendError, "msg", err, "server_url", srv.URL, "client_ip", r.UserAgent())
+		srv.SetHealthy(false)
 	}
 	proxies[srv.URL] = proxy
 }

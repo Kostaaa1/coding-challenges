@@ -30,7 +30,7 @@ func (s *LeastConnections) Next(w http.ResponseWriter, r *http.Request) *models.
 	minConn := int32(^uint32(0) >> 1)
 
 	for i, srv := range s.servers {
-		if srv.Healthy {
+		if srv.IsHealthy() {
 			conns := srv.ConnCount.Load()
 			if conns < minConn {
 				minConn = conns

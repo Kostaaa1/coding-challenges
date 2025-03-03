@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Kostaaa1/loadbalancer/internal/models"
@@ -16,6 +17,7 @@ type Checker struct {
 	servers    []*models.Server
 	httpClient *http.Client
 	logger     *slog.Logger
+	isFirstLog atomic.Bool
 	sync.RWMutex
 }
 
@@ -38,9 +40,10 @@ func NewHealthchecker(servers []*models.Server, logger *slog.Logger) *Checker {
 }
 
 func (h *Checker) UpdateServers(servers []*models.Server) {
-	h.Lock()
-	defer h.Unlock()
+	h.RLock()
 	h.servers = servers
+	h.isFirstLog.Store(false)
+	h.RUnlock()
 }
 
 func (h *Checker) Start(ctx context.Context, interval int) {
@@ -63,20 +66,24 @@ func (h *Checker) Start(ctx context.Context, interval int) {
 }
 
 func (h *Checker) run() {
-	var wg sync.WaitGroup
+	h.RLock()
+	serversToCheck := make([]*models.Server, len(h.servers))
+	copy(serversToCheck, h.servers)
+	h.RUnlock()
 
-	for _, srv := range h.servers {
+	var wg sync.WaitGroup
+	for _, srv := range serversToCheck {
 		wg.Add(1)
 		go func(s *models.Server) {
 			defer wg.Done()
 			h.check(s)
 		}(srv)
 	}
-
 	wg.Wait()
+
+	h.isFirstLog.Store(true)
 }
 
-// TODO: reduce unnecessary checks for the servers that are unhealthy
 func (h *Checker) check(srv *models.Server) {
 	if !strings.HasPrefix(srv.HealthURL, "/") {
 		srv.HealthURL = "/" + srv.HealthURL
@@ -90,33 +97,40 @@ func (h *Checker) check(srv *models.Server) {
 	}
 	defer resp.Body.Close()
 
-	status := resp.StatusCode == http.StatusOK
-	if srv.Healthy && !status || !srv.Healthy && status {
-		h.updateHealthStatus(srv, status)
-	}
+	h.updateHealthStatus(srv, resp.StatusCode == http.StatusOK)
 }
 
-func (h *Checker) updateHealthStatus(srv *models.Server, status bool) {
-	srv.Lock()
-	defer srv.Unlock()
+func (h *Checker) updateHealthStatus(srv *models.Server, newStatus bool) {
+	healthy := srv.IsHealthy()
+	statusChanged := healthy != newStatus
+	isFirstLog := !h.isFirstLog.Load()
 
-	if srv.Healthy == status {
-		return
+	if statusChanged {
+		srv.SetHealthy(newStatus)
 	}
 
 	var logStatus string
-	if status && !srv.Healthy {
-		logStatus = MarkedHealthy
+
+	if isFirstLog {
+		if newStatus {
+			logStatus = MarkedHealthy
+		}
+		if !newStatus {
+			logStatus = MarkedUnhealthy
+		}
+	} else {
+		if newStatus && !healthy {
+			logStatus = MarkedHealthy
+		}
+		if !newStatus && healthy {
+			logStatus = MarkedUnhealthy
+		}
 	}
 
-	if !status && srv.Healthy {
-		logStatus = MarkedUnhealthy
+	if logStatus != "" {
+		h.logger.Info(
+			logStatus,
+			slog.Group("server", "address", srv.URL, "name", srv.Name, "healthy", newStatus),
+		)
 	}
-
-	srv.Healthy = status
-
-	h.logger.Info(
-		logStatus,
-		slog.Group("server", "address", srv.URL, "name", srv.Name, "healthy", srv.Healthy),
-	)
 }

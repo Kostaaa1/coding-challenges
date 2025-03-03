@@ -39,7 +39,7 @@ func signalListener(srv *http.Server, lb *loadbalancer.LB, logger *slog.Logger, 
 			})
 			return
 		case syscall.SIGHUP:
-			logger.Info(loadbalancer.ConfigReload, "Received SIGHUP signal, reloading config...")
+			logger.Info(loadbalancer.ConfigReload, "msg", "Received SIGHUP signal, reloading config...")
 			newCfg, err := config.Load(cfgPath)
 			if err != nil {
 				panic(err)

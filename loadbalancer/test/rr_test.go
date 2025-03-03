@@ -11,10 +11,14 @@ import (
 
 func TestRoundRobinConcurrentRequests(t *testing.T) {
 	servers := []*models.Server{
-		{Name: "server1", Weight: 1, Healthy: true},
-		{Name: "server2", Weight: 2, Healthy: true},
-		{Name: "server3", Weight: 3, Healthy: true},
+		{Name: "server1", Weight: 1},
+		{Name: "server2", Weight: 2},
+		{Name: "server3", Weight: 3},
 	}
+	for _, srv := range servers {
+		srv.SetHealthy(true)
+	}
+
 	strategy := balancer.NewRoundRobinStrategy(servers)
 
 	var wg sync.WaitGroup
@@ -55,9 +59,12 @@ func TestRoundRobinConcurrentRequests(t *testing.T) {
 
 func TestServerFailure(t *testing.T) {
 	servers := []*models.Server{
-		{Name: "server1", Weight: 1, Healthy: true},
-		{Name: "server2", Weight: 1, Healthy: true},
-		{Name: "server3", Weight: 1, Healthy: true},
+		{Name: "server1", Weight: 1},
+		{Name: "server2", Weight: 1},
+		{Name: "server3", Weight: 1},
+	}
+	for _, srv := range servers {
+		srv.SetHealthy(true)
 	}
 	strategy := balancer.NewRoundRobinStrategy(servers)
 
@@ -70,7 +77,7 @@ func TestServerFailure(t *testing.T) {
 	assert.Equal(t, "server2", s2.Name)
 	assert.Equal(t, "server3", s3.Name)
 	assert.Equal(t, "server1", s4.Name)
-	servers[1].Healthy = false
+	servers[1].SetHealthy(false)
 
 	s5 := strategy.Next(nil, nil)
 	assert.Equal(t, "server3", s5.Name, "Should skip server2 and return server3")
@@ -81,25 +88,25 @@ func TestServerFailure(t *testing.T) {
 	s7 := strategy.Next(nil, nil)
 	assert.Equal(t, "server3", s7.Name)
 
-	servers[0].Healthy = false
-	servers[2].Healthy = false
+	servers[0].SetHealthy(false)
+	servers[2].SetHealthy(false)
 
 	s8 := strategy.Next(nil, nil)
 	assert.Nil(t, s8, "Should return nil when no healthy servers")
 
-	servers[1].Healthy = true
+	servers[1].SetHealthy(true)
 
 	s9 := strategy.Next(nil, nil)
 	assert.Equal(t, "server2", s9.Name)
 
-	servers[1].Healthy = false
-	servers[2].Healthy = true
+	servers[1].SetHealthy(false)
+	servers[2].SetHealthy(true)
 
 	s10 := strategy.Next(nil, nil)
 	assert.Equal(t, "server3", s10.Name, "Should find server3 as next healthy server")
 
-	servers[0].Healthy = true
-	servers[1].Healthy = true
+	servers[0].SetHealthy(true)
+	servers[1].SetHealthy(true)
 
 	s11 := strategy.Next(nil, nil)
 	s12 := strategy.Next(nil, nil)

@@ -25,6 +25,12 @@ COPY --from=builder /app/lb /app/lb
 # Copy the config file into the container
 COPY lb_config.json /app/lb_config.json
 
+# Set file ownership to root
+RUN chown root:root /app/lb_config.json
+
+# Set permissions: read-only for everyone except root
+RUN chmod 644 /app/lb_config.json
+
 # Ensure the binary is executable
 RUN chmod +x /app/lb
 

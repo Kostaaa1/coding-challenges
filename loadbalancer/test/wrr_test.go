@@ -11,9 +11,12 @@ import (
 
 func TestWRRConcurrentRequests(t *testing.T) {
 	servers := []*models.Server{
-		{Name: "server1", Weight: 1, Healthy: true},
-		{Name: "server2", Weight: 2, Healthy: true},
-		{Name: "server3", Weight: 3, Healthy: true},
+		{Name: "server1", Weight: 1},
+		{Name: "server2", Weight: 2},
+		{Name: "server3", Weight: 3},
+	}
+	for _, srv := range servers {
+		srv.SetHealthy(true)
 	}
 	strategy := balancer.NewSmoothWRRStrategy(servers)
 

@@ -109,7 +109,6 @@ func (cfg *Config) Watch(done chan error) {
 					mu.Unlock()
 
 					if event.Has(fsnotify.Write) {
-						fmt.Println("Write event notice")
 						p, err := os.FindProcess(os.Getpid())
 						if err == nil {
 							p.Signal(syscall.SIGHUP)
