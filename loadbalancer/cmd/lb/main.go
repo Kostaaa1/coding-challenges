@@ -69,12 +69,30 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/", lb) // TODO: add rate limit
 
+	// cert, err := tls.LoadX509KeyPair("./cert/server.crt", "./cert/server.key")
+	// if err != nil {
+	// 	log.Fatalf("Failed to load certificates: %v", err)
+	// }
+	// var ticket [32]byte
+	// rand.Read(ticket[:])
+	// tlsConfig := &tls.Config{
+	// 	Certificates: []tls.Certificate{cert},
+	// 	MinVersion:   tls.VersionTLS12,
+	// 	GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
+	// 		return &tls.Config{
+	// 			SessionTicketsDisabled: false,
+	// 			SessionTicketKey:       ticket,
+	// 		}, nil
+	// 	},
+	// }
+
 	srv := &http.Server{
-		Addr:         cfg.Port,
+		Addr:         ":443",
 		Handler:      mux,
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
+		// TLSConfig:    tlsConfig,
 	}
 
 	done := make(chan error, 1)
