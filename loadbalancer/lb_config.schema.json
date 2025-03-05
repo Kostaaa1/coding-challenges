@@ -8,14 +8,7 @@
     },
     "strategy": {
       "type": "string",
-      "enum": [
-        "round_robin",
-        "weighted_round_robin",
-        "random",
-        "smooth_weighted_round_robin",
-        "least_connections",
-        "sticky_session"
-      ],
+      "enum": ["round_robin", "weighted_round_robin", "random", "smooth_weighted_round_robin", "sticky_session"],
       "description": "The load balancing strategy to use."
     },
     "servers": {

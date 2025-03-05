@@ -1,7 +1,13 @@
 {
   "port": "8080",
-  "strategy": "smooth_weighted_round_robin",
-  "health_check_interval_seconds": 5,
+  "strategy": "random",
+  "healthcheck": {
+    "interval": 5,
+    "timeout": 2,
+    "failure_threshold": 2,
+    "success_threshold": 2
+  },
+  "health_check_interval_seconds": 300,
   "rate_limit": {
     "rate_limiter_enabled": true,
     "rate_limit_tokens": 10,
@@ -12,19 +18,19 @@
       "name": "server1",
       "url": "http://localhost:8081",
       "health_url": "/health",
-      "weight": 1
+      "weight": 5
     },
     {
       "name": "server2",
       "url": "http://localhost:8082",
       "health_url": "/health",
-      "weight": 3
+      "weight": 1
     },
     {
       "name": "server3",
       "url": "http://localhost:8083",
       "health_url": "/health",
-      "weight": 5
+      "weight": 1
     }
   ],
   "tls": {
@@ -36,6 +42,20 @@
     "enabled": false,
     "default_server": "fallback-server",
     "rules": [
+      {
+        "conditions": [
+          {
+            "path_prefix": "/api/v2/products",
+            "method": "GET",
+            "headers": {
+              "User-Agent": "MobileApp"
+            }
+          }
+        ],
+        "action": {
+          "route_to": "tinylink-server"
+        }
+      },
       {
         "conditions": [
           {

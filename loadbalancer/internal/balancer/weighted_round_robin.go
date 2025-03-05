@@ -1,7 +1,6 @@
 package balancer
 
 import (
-	"fmt"
 	"net/http"
 	"sort"
 	"sync"
@@ -25,7 +24,6 @@ func (s *WRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	}
 
 	if s.areWeightsZero() {
-		fmt.Println("resetting weights")
 		s.resetWeights()
 	}
 

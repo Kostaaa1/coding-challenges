@@ -47,7 +47,9 @@ func signalListener(srv *http.Server, lb *loadbalancer.LB, logger *slog.Logger, 
 			if err != nil {
 				log.Fatal(err)
 			}
-			lb.SetConfig(newCfg)
+			if err = lb.SetConfig(newCfg); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 }

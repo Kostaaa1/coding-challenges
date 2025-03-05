@@ -51,12 +51,12 @@ func (h *Checker) Start(interval int, ctx context.Context) {
 		ticker := time.NewTicker(time.Second * time.Duration(interval))
 		defer ticker.Stop()
 
-		h.run()
+		h.Run()
 
 		for {
 			select {
 			case <-ticker.C:
-				h.run()
+				h.Run()
 
 			case <-ctx.Done():
 				h.logger.Info("Health check stopped")
@@ -66,7 +66,7 @@ func (h *Checker) Start(interval int, ctx context.Context) {
 	}()
 }
 
-func (h *Checker) run() {
+func (h *Checker) Run() {
 	h.RLock()
 	serversToCheck := make([]*models.Server, len(h.servers))
 	copy(serversToCheck, h.servers)

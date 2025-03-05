@@ -63,7 +63,6 @@ func (l *LB) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	l.logger.Info(RequestReceived, "method", r.Method, "url", r.URL.String(), "client_ip", r.RemoteAddr)
 
 	srv := l.Next(w, r)
-
 	if srv == nil {
 		l.logger.Warn(NoBackendAvailable, "url", r.URL.String())
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -71,10 +70,10 @@ func (l *LB) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if l.cfg.Strategy == balancer.LeastConnectionsStrategy {
-		srv.ConnCount.Add(1)
-		defer srv.ConnCount.Add(-1)
-	}
+	// if l.cfg.Strategy == balancer.LeastConnectionsStrategy {
+	// 	srv.ConnCount.Add(1)
+	// 	defer srv.ConnCount.Add(-1)
+	// }
 
 	l.logger.Info(RequestForwarded, "server", srv.URL, "client_ip", r.RemoteAddr)
 
@@ -89,6 +88,23 @@ func (l *LB) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	l.Lock()
 	defer l.Unlock()
 	return l.strategy.Next(w, r)
+}
+
+func (l *LB) addProxy(proxies map[string]*httputil.ReverseProxy, srv *models.Server) {
+	parsed, _ := url.Parse(srv.URL)
+	proxy := httputil.NewSingleHostReverseProxy(parsed)
+	proxy.Transport = defaultTransport
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		l.logger.Error(BackendError, "msg", err, "server_url", srv.URL, "client_ip", r.UserAgent())
+		srv.SetHealthy(false)
+	}
+	proxies[srv.URL] = proxy
+}
+
+func (l *LB) SetLogger(logger *slog.Logger) {
+	l.Lock()
+	defer l.Unlock()
+	l.logger = logger
 }
 
 func (l *LB) SetConfig(cfg *config.Config) error {
@@ -111,23 +127,6 @@ func (l *LB) SetConfig(cfg *config.Config) error {
 	l.proxies = proxies
 
 	return nil
-}
-
-func (l *LB) addProxy(proxies map[string]*httputil.ReverseProxy, srv *models.Server) {
-	parsed, _ := url.Parse(srv.URL)
-	proxy := httputil.NewSingleHostReverseProxy(parsed)
-	proxy.Transport = defaultTransport
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		l.logger.Error(BackendError, "msg", err, "server_url", srv.URL, "client_ip", r.UserAgent())
-		srv.SetHealthy(false)
-	}
-	proxies[srv.URL] = proxy
-}
-
-func (l *LB) SetLogger(logger *slog.Logger) {
-	l.Lock()
-	defer l.Unlock()
-	l.logger = logger
 }
 
 func New(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*LB, error) {

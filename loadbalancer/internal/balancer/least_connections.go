@@ -1,53 +1,46 @@
 package balancer
 
-import (
-	"net/http"
-	"sync"
+// type LeastConnections struct {
+// 	servers []*models.Server
+// 	sync.RWMutex
+// }
 
-	"github.com/Kostaaa1/loadbalancer/internal/models"
-)
+// func (s *LeastConnections) UpdateServers(servers []*models.Server) {
+// 	s.Lock()
+// 	defer s.Unlock()
+// 	s.servers = servers
+// }
 
-type LeastConnections struct {
-	servers []*models.Server
-	sync.RWMutex
-}
+// func (s *LeastConnections) Next(w http.ResponseWriter, r *http.Request) *models.Server {
+// 	if len(s.servers) == 0 {
+// 		return nil
+// 	}
 
-func (s *LeastConnections) UpdateServers(servers []*models.Server) {
-	s.Lock()
-	defer s.Unlock()
-	s.servers = servers
-}
+// 	s.Lock()
+// 	defer s.Unlock()
 
-func (s *LeastConnections) Next(w http.ResponseWriter, r *http.Request) *models.Server {
-	if len(s.servers) == 0 {
-		return nil
-	}
+// 	minIdx := -1
+// 	minConn := int32(^uint32(0) >> 1)
 
-	s.Lock()
-	defer s.Unlock()
+// 	for i, srv := range s.servers {
+// 		if srv.IsHealthy() {
+// 			conns := srv.ConnCount.Load()
+// 			if conns < minConn {
+// 				minConn = conns
+// 				minIdx = i
+// 			}
+// 		}
+// 	}
 
-	minIdx := -1
-	minConn := int32(^uint32(0) >> 1)
+// 	if minIdx == -1 {
+// 		return nil
+// 	}
 
-	for i, srv := range s.servers {
-		if srv.IsHealthy() {
-			conns := srv.ConnCount.Load()
-			if conns < minConn {
-				minConn = conns
-				minIdx = i
-			}
-		}
-	}
+// 	return s.servers[minIdx]
+// }
 
-	if minIdx == -1 {
-		return nil
-	}
-
-	return s.servers[minIdx]
-}
-
-func NewLeastConnectionsStrategy(servers []*models.Server) ILBStrategy {
-	return &LeastConnections{
-		servers: servers,
-	}
-}
+// func NewLeastConnectionsStrategy(servers []*models.Server) ILBStrategy {
+// 	return &LeastConnections{
+// 		servers: servers,
+// 	}
+// }

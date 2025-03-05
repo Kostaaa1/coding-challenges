@@ -10,15 +10,20 @@ Brief description of what the project does.
 
 ## Features
 
-    - Config watcher - config update without the need of restarting the server (SIGHUP signals)
-    - Healthchecker
-    - Strategy pattern
-    	- round robin - even distribution, always getting next server in order
-    	- weighted round robin - using server weights for indicating the distribution cycle. If loadbalancer is forwarding requests to 3 servers, where they each have 5-3-2 weights, one cycle would be finished after 10 requests. 5 requests would be forwarded to server A, 3 to B and 2 to C. We track current weights (initially using configured weights) and index of current active server. Every time new server gets selected, current weight will be reduced by one. When all servers have 0 current weight, then we reset them to their configured values.
-    	- smooth weighted round robin - next server is the server with current amount of weights
-    	- sticky session -
-    	- least connections
-    	- ip hash
-    - [TODO] Rate limit
-    - [TODO] Simple response caching
-    - [TODO] TLS
+- Config watcher - watching for changes in main config file (JSON | YAML), then it sends the SIGHUP signal which will update the config, removing the need of resetting the lb.
+- Healthchecker -
+- Strategies - (round_robin, weighted_round_robin, smooth_weighted_round_robin, random (supports weights), sticky_session)
+- CBR - Content based routing
+- [TODO] - Rate limit
+- [TODO] - Add TLS
+- [TODO] - Add response caching
+- Docker
+
+## Strategies
+
+- Round robin -
+- Weighted round robin -
+- Smooth weighted round robin -
+- Random -
+- Sticky sessions -
+- Least connection

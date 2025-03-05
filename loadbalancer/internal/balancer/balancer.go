@@ -16,8 +16,9 @@ var (
 	RoundRobinStrategy         = "round_robin"
 	WeightedRoundRobinStrategy = "weighted_round_robin"
 	SmoothWeightedRoundRobin   = "smooth_weighted_round_robin"
-	LeastConnectionsStrategy   = "leact_connections"
 	StickySessionStrategy      = "sticky_session"
+	RandomStrategy             = "random"
+	// LeastConnectionsStrategy   = "leact_connections"
 )
 
 func GetLBStrategy(strategy string, servers []*models.Server) (ILBStrategy, error) {
@@ -30,8 +31,10 @@ func GetLBStrategy(strategy string, servers []*models.Server) (ILBStrategy, erro
 		return NewWRRStrategy(servers), nil
 	case SmoothWeightedRoundRobin:
 		return NewSmoothWRRStrategy(servers), nil
-	case LeastConnectionsStrategy:
-		return NewLeastConnectionsStrategy(servers), nil
+	// case LeastConnectionsStrategy:
+	// 	return NewLeastConnectionsStrategy(servers), nil
+	case RandomStrategy:
+		return NewRandomStrategy(servers), nil
 	default:
 		return nil, errors.New("provided strategy is not valid")
 	}

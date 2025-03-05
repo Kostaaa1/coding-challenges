@@ -1,20 +1,18 @@
 package balancer
 
 import (
-	"fmt"
 	"net/http"
 	"sync"
 
 	"github.com/Kostaaa1/loadbalancer/internal/models"
 )
 
-type SmoothWRR struct {
+type SW struct {
 	servers []*models.Server
-	cw      []int
-	sync.Mutex
+	sync.RWMutex
 }
 
-func (s *SmoothWRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
+func (s *SW) Next(w http.ResponseWriter, r *http.Request) (peer *models.Server) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -22,53 +20,41 @@ func (s *SmoothWRR) Next(w http.ResponseWriter, r *http.Request) *models.Server 
 		return nil
 	}
 
-	healthyTotal := 0
+	if len(s.servers) == 1 {
+		return s.servers[0]
+	}
+
+	var total int
+	var found bool
+
 	for _, srv := range s.servers {
-		if srv.IsHealthy() {
-			healthyTotal += srv.Weight
-		}
-	}
-	if healthyTotal == 0 {
-		return nil
-	}
-
-	var selectedSrv *models.Server
-	maxWeight := -1
-	selectedIdx := -1
-
-	for idx, srv := range s.servers {
 		if !srv.IsHealthy() {
 			continue
 		}
 
-		s.cw[idx] += srv.Weight
-		if s.cw[idx] > maxWeight {
-			maxWeight = s.cw[idx]
-			selectedSrv = srv
-			selectedIdx = idx
+		srv.CurrentWeight += srv.Weight
+		total += srv.Weight
+		if !found || srv.CurrentWeight > peer.CurrentWeight {
+			peer = srv
+			found = true
 		}
 	}
 
-	if selectedSrv == nil {
-		fmt.Println("no selected")
-		return nil
+	if peer != nil {
+		peer.CurrentWeight -= total
 	}
 
-	s.cw[selectedIdx] -= healthyTotal
-	return selectedSrv
+	return peer
 }
 
-func NewSmoothWRRStrategy(servers []*models.Server) ILBStrategy {
-	cw := make([]int, len(servers))
-	return &SmoothWRR{
-		servers: servers,
-		cw:      cw,
-	}
-}
-
-func (s *SmoothWRR) UpdateServers(servers []*models.Server) {
+func (s *SW) UpdateServers(servers []*models.Server) {
 	s.Lock()
 	defer s.Unlock()
 	s.servers = servers
-	s.cw = make([]int, len(servers))
+}
+
+func NewSmoothWRRStrategy(servers []*models.Server) ILBStrategy {
+	return &SW{
+		servers: servers,
+	}
 }

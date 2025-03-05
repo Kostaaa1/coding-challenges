@@ -3,16 +3,35 @@ package models
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Server struct {
+	sync.Mutex
 	Name      string `json:"name" yaml:"name"`
 	URL       string `json:"url" yaml:"url"`
 	HealthURL string `json:"health_url" yaml:"health_url"`
 	Weight    int    `json:"weight"`
-	healthy   bool
+	// CurrentWeight int
+	healthy bool
+
+	consecutiveFailures int
+	inRecoveryMode      bool
+	lastFailureTime     time.Time
+
 	ConnCount atomic.Int32
-	sync.Mutex
+}
+
+func (srv *Server) MarkHealthy() {
+	srv.Lock()
+	srv.healthy = true
+	srv.Unlock()
+}
+
+func (srv *Server) MarkUnhealthy() {
+	srv.Lock()
+	srv.healthy = false
+	srv.Unlock()
 }
 
 func (srv *Server) IsHealthy() bool {
@@ -49,7 +68,6 @@ func (srv *Server) SetHealthy(status bool) {
 // 	}
 // 	return nil
 // }
-
 // func (s *Server) UnmarshalYAML(data []byte) error {
 // 	aux := &struct {
 // 		Name      string `yaml:"name"`
@@ -61,7 +79,6 @@ func (srv *Server) SetHealthy(status bool) {
 // 	if err := yaml.Unmarshal(data, &aux); err != nil {
 // 		return err
 // 	}
-
 // 	s.Name = aux.Name
 // 	s.URL = aux.URL
 // 	s.HealthURL = aux.HealthURL
