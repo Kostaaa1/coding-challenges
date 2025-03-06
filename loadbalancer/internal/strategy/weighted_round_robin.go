@@ -1,7 +1,6 @@
-package balancer
+package strategy
 
 import (
-	"net/http"
 	"sort"
 	"sync"
 
@@ -15,7 +14,7 @@ type WRR struct {
 	sync.RWMutex
 }
 
-func (s *WRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
+func (s *WRR) Next() *models.Server {
 	s.Lock()
 	defer s.Unlock()
 
@@ -40,7 +39,7 @@ func (s *WRR) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 
 	if s.areWeightsZero() {
 		s.resetWeights()
-		return s.Next(w, r)
+		return s.Next()
 	}
 
 	return nil

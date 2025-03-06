@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,31 +19,41 @@ import (
 )
 
 const (
-	defaultHealthCheckInterval = 5
+	defaultInterval           = 5
+	defaultUnhealthyThreshold = 1
+	defaultHealthyThreshold   = 1
 )
 
-type Config struct {
-	Port                       string `json:"port" yaml:"port"`
-	Strategy                   string `json:"strategy" yaml:"strategy"`
-	HealthCheckIntervalSeconds int    `json:"health_check_interval_seconds" yaml:"health_check_interval_seconds"`
+type HealthcheckConfig struct {
+	Interval           int    `json:"interval" yaml:"interval"`
+	URI                string `json:"uri" yaml:"uri"`
+	UnhealthyThreshold int    `json:"unhealthy_threshold" yaml:"unhealthy_threshold"`
+	HealthyThreshold   int    `json:"healthy_threshold" yaml:"healthy_threshold"`
+}
 
-	RateLimit struct {
+type TLSConfig struct {
+	Enabled          bool          `json:"enabled"`
+	CertFile         string        `json:"cert_file"`
+	KeyFile          string        `json:"key_file"`
+	MinVersion       uint16        `json:"min_version"` // Maps to tls package constants
+	MaxVersion       uint16        `json:"max_version"`
+	Ciphers          []uint16      `json:"ciphers"`
+	CurvePreferences []tls.CurveID `json:"curve_preferences"`
+}
+
+type Config struct {
+	Port        string            `json:"port" yaml:"port"`
+	Strategy    string            `json:"strategy" yaml:"strategy"`
+	Healthcheck HealthcheckConfig `json:"healthcheck" yaml:"healthcheck"`
+	RateLimit   struct {
 		RateLimiterEnabled       bool `json:"rate_limiter_enabled" yaml:"rate_limiter_enabled"`
 		RateLimitTokens          int  `json:"rate_limit_tokens" yaml:"rate_limit_tokens"`
 		RateLimitIntervalSeconds int  `json:"rate_limit_interval_seconds" yaml:"rate_limit_interval_seconds"`
 	} `json:"rate_limit" yaml:"rate_limit"`
-
-	Servers []*models.Server `json:"servers" yaml:"servers"`
-
-	TLS struct {
-		Enabled  bool   `json:"tls_enabled" yaml:"tls_enabled"`
-		CertPath string `json:"tls_cert_file" yaml:"tls_cert_file"`
-		KeyPath  string `json:"tls_key_file" yaml:"tls_key_file"`
-	} `json:"tls" yaml:"tls"`
-
-	Routing models.Routing `json:"routing" yaml:"routing"`
-
-	configPath string `json:"-" yaml:"-"`
+	Servers    []*models.Server `json:"servers" yaml:"servers"`
+	TLS        TLSConfig        `json:"tls" yaml:"tls"`
+	Routing    models.Routing   `json:"routing" yaml:"routing"`
+	configPath string           `json:"-" yaml:"-"`
 }
 
 func Load(p string) (*Config, error) {
@@ -71,8 +82,14 @@ func Load(p string) (*Config, error) {
 		cfg.Port = ":" + cfg.Port
 	}
 
-	if cfg.HealthCheckIntervalSeconds == 0 {
-		cfg.HealthCheckIntervalSeconds = defaultHealthCheckInterval
+	if cfg.Healthcheck.Interval == 0 {
+		cfg.Healthcheck.Interval = defaultInterval
+	}
+	if cfg.Healthcheck.UnhealthyThreshold == 0 {
+		cfg.Healthcheck.UnhealthyThreshold = defaultUnhealthyThreshold
+	}
+	if cfg.Healthcheck.HealthyThreshold == 0 {
+		cfg.Healthcheck.HealthyThreshold = defaultHealthyThreshold
 	}
 
 	cfg.configPath = p

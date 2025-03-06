@@ -1,7 +1,6 @@
-package balancer
+package strategy
 
 import (
-	"net/http"
 	"sync"
 
 	"github.com/Kostaaa1/loadbalancer/internal/models"
@@ -19,7 +18,7 @@ func (s *RoundRobin) UpdateServers(servers []*models.Server) {
 	s.servers = servers
 }
 
-func (s *RoundRobin) Next(w http.ResponseWriter, r *http.Request) *models.Server {
+func (s *RoundRobin) Next() *models.Server {
 	if len(s.servers) == 0 {
 		return nil
 	}

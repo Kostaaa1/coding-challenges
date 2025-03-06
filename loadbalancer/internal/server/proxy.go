@@ -1,32 +1,35 @@
 package loadbalancer
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/Kostaaa1/loadbalancer/internal/balancer"
 	"github.com/Kostaaa1/loadbalancer/internal/config"
 	"github.com/Kostaaa1/loadbalancer/internal/models"
+	"github.com/Kostaaa1/loadbalancer/internal/strategy"
 )
 
 var (
-	RequestForwarded    = "REQUEST_FORWARDED"
-	RequestFailed       = "REQUEST_FAILED"
-	RequestRetry        = "REQUEST_RETRY"
-	RequestReceived     = "REQUEST_RECEIVED"
-	RequestCompleted    = "REQUEST_COMPLETED"
-	LoadbalancerStarted = "LOADBALANCER_STARTED"
-	MarkedHealthy       = "SERVER_MARKED_HEALTHY"
-	MarkedUnhealthy     = "SERVER_MARKED_UNHEALTHY"
-	NoBackendAvailable  = "NO_BACKEND_AVAILABLE"
-	NoHealthyBackend    = "NO_HEALTHY_BACKEND"
-	BackendError        = "BACKEND_ERROR"
-	ConfigReload        = "CONFIG_RELOAD"
+	RequestForwarded      = "REQUEST_FORWARDED"
+	RequestFailed         = "REQUEST_FAILED"
+	RequestRetry          = "REQUEST_RETRY"
+	RequestReceived       = "REQUEST_RECEIVED"
+	MaxConnectionExceeded = "MAX_CONNECTIONS_EXCEEDED"
+	RequestCompleted      = "REQUEST_COMPLETED"
+	LoadbalancerStarted   = "LOADBALANCER_STARTED"
+
+	MarkedHealthy   = "SERVER_MARKED_HEALTHY"
+	MarkedUnhealthy = "SERVER_MARKED_UNHEALTHY"
+
+	NoBackendAvailable = "NO_BACKEND_AVAILABLE"
+	NoHealthyBackend   = "NO_HEALTHY_BACKEND"
+	BackendError       = "BACKEND_ERROR"
+	ConfigReload       = "CONFIG_RELOAD"
 
 	defaultTransport = &http.Transport{
 		MaxIdleConns:          1000,
@@ -50,8 +53,7 @@ func (w *statusResponseWriter) WriteHeader(code int) {
 
 type LB struct {
 	proxies  map[string]*httputil.ReverseProxy
-	strategy balancer.ILBStrategy
-	checker  *Checker
+	strategy strategy.ILBStrategy
 	cfg      *config.Config
 	logger   *slog.Logger
 	sync.Mutex
@@ -70,24 +72,48 @@ func (l *LB) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// if l.cfg.Strategy == balancer.LeastConnectionsStrategy {
-	// 	srv.ConnCount.Add(1)
-	// 	defer srv.ConnCount.Add(-1)
-	// }
+	atomic.AddInt64(&srv.TotalConns, 1)
 
-	l.logger.Info(RequestForwarded, "server", srv.URL, "client_ip", r.RemoteAddr)
+	activeConns := atomic.AddInt64(&srv.ActiveConns, 1)
+	defer atomic.AddInt64(&srv.ActiveConns, -1)
+
+	if activeConns == srv.MaxConnections {
+		l.logger.Warn(MaxConnectionExceeded,
+			"server", srv.Name,
+			"active_conns", activeConns,
+			"max_conns", srv.MaxConnections,
+			"client_ip", r.RemoteAddr)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("503 Service Unavailable - Server at capacity"))
+		return
+	}
+
+	l.logger.Info(RequestForwarded, "server", srv.URL, "client_ip", r.RemoteAddr, "active_conns", atomic.LoadInt64(&srv.ActiveConns))
 
 	statusRecorder := &statusResponseWriter{ResponseWriter: w}
 	proxy := l.proxies[srv.URL]
 	proxy.ServeHTTP(statusRecorder, r)
 
-	l.logger.Info(RequestCompleted, "server", srv.Name, "server_url", srv.URL, "status", statusRecorder.status, "latency_ms", time.Since(start).Milliseconds())
+	// handle passive checks (avoid disabling server if error occurs)
+	if statusRecorder.status >= 500 {
+		srv.SetHealthy(false)
+	}
+
+	l.logger.Info(
+		RequestCompleted,
+		"server", srv.Name,
+		"status", statusRecorder.status,
+		"healthy", srv.IsHealthy(),
+		"active_conns", atomic.LoadInt64(&srv.ActiveConns),
+		"total_conns", atomic.LoadInt64(&srv.TotalConns),
+		"latency_ms", time.Since(start).Milliseconds(),
+	)
 }
 
 func (l *LB) Next(w http.ResponseWriter, r *http.Request) *models.Server {
 	l.Lock()
 	defer l.Unlock()
-	return l.strategy.Next(w, r)
+	return l.strategy.Next()
 }
 
 func (l *LB) addProxy(proxies map[string]*httputil.ReverseProxy, srv *models.Server) {
@@ -112,13 +138,16 @@ func (l *LB) SetConfig(cfg *config.Config) error {
 	defer l.Unlock()
 
 	l.cfg = cfg
-	lbStrategy, err := balancer.GetLBStrategy(cfg.Strategy, cfg.Servers)
+
+	lbStrategy, err := strategy.GetFromConfig(cfg)
 	if err != nil {
 		return err
 	}
 	l.strategy = lbStrategy
 	l.strategy.UpdateServers(cfg.Servers)
-	l.checker.UpdateServers(cfg.Servers)
+
+	// l.checker.UpdateServers(cfg.Servers)
+	// l.checker.Restart(l.checkerCtx, cfg)
 
 	proxies := make(map[string]*httputil.ReverseProxy, len(cfg.Servers))
 	for _, srv := range cfg.Servers {
@@ -129,20 +158,17 @@ func (l *LB) SetConfig(cfg *config.Config) error {
 	return nil
 }
 
-func New(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*LB, error) {
-	lbStrategy, err := balancer.GetLBStrategy(cfg.Strategy, cfg.Servers)
+func New(cfg *config.Config, logger *slog.Logger) (*LB, error) {
+	lbStrategy, err := strategy.GetFromConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	checker := NewHealthchecker(cfg.Servers, logger)
-	checker.Start(cfg.HealthCheckIntervalSeconds, ctx)
 	proxies := make(map[string]*httputil.ReverseProxy, len(cfg.Servers))
 
 	lb := &LB{
 		cfg:      cfg,
 		strategy: lbStrategy,
-		checker:  checker,
 		logger:   logger,
 		proxies:  proxies,
 	}

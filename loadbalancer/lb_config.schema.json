@@ -4,12 +4,60 @@
   "properties": {
     "port": {
       "type": "string",
-      "description": "The port on which the load balancer will listen."
+      "pattern": "^[0-9]+$"
     },
     "strategy": {
       "type": "string",
-      "enum": ["round_robin", "weighted_round_robin", "random", "smooth_weighted_round_robin", "sticky_session"],
-      "description": "The load balancing strategy to use."
+      "enum": [
+        "round_robin",
+        "weighted_round_robin",
+        "smooth_weighted_round_robin",
+        "sticky_sessions",
+        "random",
+        "least_connections",
+        "ip_hash"
+      ]
+    },
+    "healthcheck": {
+      "type": "object",
+      "properties": {
+        "interval": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fails_threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "passes_threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^/"
+        }
+      },
+      "required": ["interval", "fails_threshold", "passes_threshold", "uri"],
+      "additionalProperties": false
+    },
+    "rate_limit": {
+      "type": "object",
+      "properties": {
+        "rate_limiter_enabled": {
+          "type": "boolean"
+        },
+        "rate_limit_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rate_limit_interval_seconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["rate_limiter_enabled", "rate_limit_tokens", "rate_limit_interval_seconds"],
+      "additionalProperties": false
     },
     "servers": {
       "type": "array",
@@ -17,28 +65,110 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string",
-            "description": "The name of the server."
+            "type": "string"
           },
           "url": {
             "type": "string",
-            "format": "uri",
-            "description": "The URL of the server."
+            "format": "uri"
           },
           "health_url": {
-            "type": "string",
-            "format": "string",
-            "description": "The health check endpoint of the server."
+            "type": "string"
           },
           "weight": {
             "type": "integer",
-            "minimum": 1,
-            "description": "The weight of the server (used in weighted strategies)."
+            "minimum": 1
+          },
+          "max_fails": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "fail_timeout": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "slow_server": {
+            "type": "integer",
+            "minimum": 1
           }
         },
-        "required": ["name", "url", "health_url"]
+        "required": ["name", "url", "health_url", "weight"],
+        "additionalProperties": false
       }
+    },
+    "tls": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "cert_file": {
+          "type": "string"
+        },
+        "key_file": {
+          "type": "string"
+        }
+      },
+      "required": ["enabled", "cert_file", "key_file"],
+      "additionalProperties": false
+    },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "default_server": {
+          "type": "string"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "conditions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path_prefix": {
+                      "type": "string",
+                      "pattern": "^/"
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"]
+                    },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["path_prefix"],
+                  "additionalProperties": false
+                }
+              },
+              "action": {
+                "type": "object",
+                "properties": {
+                  "route_to": {
+                    "type": "string"
+                  }
+                },
+                "required": ["route_to"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["conditions", "action"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["enabled", "default_server", "rules"],
+      "additionalProperties": false
     }
   },
-  "required": ["port", "strategy", "servers"]
+  "required": ["port", "strategy", "healthcheck", "rate_limit", "servers", "tls", "routing"],
+  "additionalProperties": false
 }

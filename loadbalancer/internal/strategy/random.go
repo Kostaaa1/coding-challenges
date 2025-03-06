@@ -1,8 +1,7 @@
-package balancer
+package strategy
 
 import (
 	"math/rand"
-	"net/http"
 	"sync"
 	"time"
 
@@ -15,7 +14,7 @@ type Random struct {
 	sync.RWMutex
 }
 
-func (s *Random) Next(w http.ResponseWriter, r *http.Request) *models.Server {
+func (s *Random) Next() *models.Server {
 	s.RLock()
 	defer s.RUnlock()
 

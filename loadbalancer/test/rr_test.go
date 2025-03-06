@@ -4,8 +4,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Kostaaa1/loadbalancer/internal/balancer"
 	"github.com/Kostaaa1/loadbalancer/internal/models"
+	"github.com/Kostaaa1/loadbalancer/internal/strategy"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,7 +19,7 @@ func TestRoundRobinConcurrentRequests(t *testing.T) {
 		srv.SetHealthy(true)
 	}
 
-	strategy := balancer.NewRoundRobinStrategy(servers)
+	strategy := strategy.NewRoundRobinStrategy(servers)
 
 	var wg sync.WaitGroup
 	concurrency := 3000
@@ -31,7 +31,7 @@ func TestRoundRobinConcurrentRequests(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			srv := strategy.Next(nil, nil)
+			srv := strategy.Next()
 			if srv == nil {
 				t.Errorf("Got nil server, expected a valid server")
 				return
@@ -66,12 +66,12 @@ func TestServerFailure(t *testing.T) {
 	for _, srv := range servers {
 		srv.SetHealthy(true)
 	}
-	strategy := balancer.NewRoundRobinStrategy(servers)
+	strategy := strategy.NewRoundRobinStrategy(servers)
 
-	s1 := strategy.Next(nil, nil)
-	s2 := strategy.Next(nil, nil)
-	s3 := strategy.Next(nil, nil)
-	s4 := strategy.Next(nil, nil)
+	s1 := strategy.Next()
+	s2 := strategy.Next()
+	s3 := strategy.Next()
+	s4 := strategy.Next()
 
 	assert.Equal(t, "server1", s1.Name)
 	assert.Equal(t, "server2", s2.Name)
@@ -79,38 +79,38 @@ func TestServerFailure(t *testing.T) {
 	assert.Equal(t, "server1", s4.Name)
 	servers[1].SetHealthy(false)
 
-	s5 := strategy.Next(nil, nil)
+	s5 := strategy.Next()
 	assert.Equal(t, "server3", s5.Name, "Should skip server2 and return server3")
 
-	s6 := strategy.Next(nil, nil)
+	s6 := strategy.Next()
 	assert.Equal(t, "server1", s6.Name)
 
-	s7 := strategy.Next(nil, nil)
+	s7 := strategy.Next()
 	assert.Equal(t, "server3", s7.Name)
 
 	servers[0].SetHealthy(false)
 	servers[2].SetHealthy(false)
 
-	s8 := strategy.Next(nil, nil)
+	s8 := strategy.Next()
 	assert.Nil(t, s8, "Should return nil when no healthy servers")
 
 	servers[1].SetHealthy(true)
 
-	s9 := strategy.Next(nil, nil)
+	s9 := strategy.Next()
 	assert.Equal(t, "server2", s9.Name)
 
 	servers[1].SetHealthy(false)
 	servers[2].SetHealthy(true)
 
-	s10 := strategy.Next(nil, nil)
+	s10 := strategy.Next()
 	assert.Equal(t, "server3", s10.Name, "Should find server3 as next healthy server")
 
 	servers[0].SetHealthy(true)
 	servers[1].SetHealthy(true)
 
-	s11 := strategy.Next(nil, nil)
-	s12 := strategy.Next(nil, nil)
-	s13 := strategy.Next(nil, nil)
+	s11 := strategy.Next()
+	s12 := strategy.Next()
+	s13 := strategy.Next()
 
 	assert.Equal(t, "server1", s11.Name)
 	assert.Equal(t, "server2", s12.Name)

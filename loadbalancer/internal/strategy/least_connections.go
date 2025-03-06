@@ -1,4 +1,4 @@
-package balancer
+package strategy
 
 // type LeastConnections struct {
 // 	servers []*models.Server

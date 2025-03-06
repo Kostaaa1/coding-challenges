@@ -4,8 +4,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Kostaaa1/loadbalancer/internal/balancer"
 	"github.com/Kostaaa1/loadbalancer/internal/models"
+	"github.com/Kostaaa1/loadbalancer/internal/strategy"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,7 +18,7 @@ func TestWRRConcurrentRequests(t *testing.T) {
 	for _, srv := range servers {
 		srv.SetHealthy(true)
 	}
-	strategy := balancer.NewSmoothWRRStrategy(servers)
+	strategy := strategy.NewSmoothWRRStrategy(servers)
 
 	var wg sync.WaitGroup
 	concurrency := 100000
@@ -31,7 +31,7 @@ func TestWRRConcurrentRequests(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			srv := strategy.Next(nil, nil)
+			srv := strategy.Next()
 
 			if srv == nil {
 				t.Errorf("Got nil server, expected a valid server")
