@@ -68,9 +68,12 @@ func (h *Checker) Start() {
 	h.wg.Add(1)
 	go func() {
 		defer h.wg.Done()
+
 		ticker := time.NewTicker(time.Second * time.Duration(h.cfg.Interval))
 		defer ticker.Stop()
+
 		h.run()
+
 		for {
 			select {
 			case <-ticker.C:

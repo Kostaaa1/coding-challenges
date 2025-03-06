@@ -3,8 +3,8 @@
   "strategy": "round_robin",
   "healthcheck": {
     "interval": 5,
-    "fails_threshold": 1,
-    "passes_threshold": 1,
+    "fails_threshold": 3,
+    "passes_threshold": 2,
     "uri": "/health"
   },
   "rate_limit": {

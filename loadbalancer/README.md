@@ -11,10 +11,12 @@ Brief description of what the project does.
 ## Features
 
 - Config watcher - watching for changes in main config file (JSON | YAML), then it sends the SIGHUP signal which will update the config, removing the need of resetting the lb.
-- Healthchecker -
+- Healthchecker - [TODO] Passive healtchecking
 - Strategies - (round_robin, weighted_round_robin, smooth_weighted_round_robin, random (supports weights), sticky_session)
-- CBR - Content based routing
+- [TODO] CBR - Content based routing
 - [TODO] - Rate limit
+- [TODO] - Cors
+- [TODO] - Compression
 - [TODO] - Add TLS
 - [TODO] - Add response caching
 - Docker
@@ -27,3 +29,7 @@ Brief description of what the project does.
 - Random -
 - Sticky sessions -
 - Least connection
+
+## TODO
+
+- Server groupings

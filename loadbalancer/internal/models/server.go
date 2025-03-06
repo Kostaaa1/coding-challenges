@@ -11,7 +11,6 @@ type Server struct {
 	HealthURL      string `json:"health_url" yaml:"health_url"`
 	Weight         int    `json:"weight"`
 	MaxConnections int64  `json:"max_connections" yaml:"max_connections"`
-	SlowStart      int    `json:"slow_start" yaml:"slow_start"`
 	// LastFailed       time.Time
 	// FailTimeout      time.Duration `json:"fail_timeout" yaml:"fail_timeout"`
 	// MaxFails         int `json:"max_fails" yaml:"max_fails"`
@@ -21,6 +20,7 @@ type Server struct {
 	ActiveSuccesses int
 	// LastActiveCheck  time.Time
 	// LastPassiveCheck time.Time
+	// SlowStart      time.Duration `json:"slow_start" yaml:"slow_start"` // TODO
 	ActiveConns  int64
 	TotalConns   int64
 	ResponseTime time.Duration `json:"response_time"`
