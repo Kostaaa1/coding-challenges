@@ -136,17 +136,17 @@ func (h *Checker) updateHealthStatus(srv *models.Server, newStatus bool) {
 	var logStatus string
 	if isFirstLog {
 		if newStatus {
-			logStatus = "SERVER_MARKED_HEALTHY"
+			logStatus = "SERVER_HEALTHY"
 		}
 		if !newStatus {
-			logStatus = "SERVER_MARKED_UNHEALTHY"
+			logStatus = "SERVER_UNHEALTHY"
 		}
 	} else {
 		if newStatus && !currentStatus {
-			logStatus = "SERVER_MARKED_HEALTHY"
+			logStatus = "SERVER_HEALTHY"
 		}
 		if !newStatus && currentStatus {
-			logStatus = "SERVER_MARKED_UNHEALTHY"
+			logStatus = "SERVER_UNHEALTHY"
 		}
 	}
 
