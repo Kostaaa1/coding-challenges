@@ -1,0 +1,12 @@
+package pkg
+
+type Bucket int
+
+const (
+	B_TOKEN Bucket = iota
+	B_LEAKY_METER
+	B_LEAKY_QUEUE
+	B_FIXED_WINDOW_COUNTER
+	B_SLIDING_WINDOW_LOG
+	B_SLIDING_WINDOW_COUNTER
+)
